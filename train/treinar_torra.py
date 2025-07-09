@@ -92,6 +92,7 @@ def treinar():
     print(f"Modelo Keras salvo em: {keras_model_path}")
 
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
     tflite_model = converter.convert()
 
     tflite_model_path = os.path.join(config.MODELS_DIR, config.CNN_MODEL_FILENAME)

@@ -7,11 +7,8 @@ from camera import capturar_frame
 from processamento_imagem import processar_imagem
 from cnn.classificar_torra import CNNClassifier
 from yolo.detectar_graos import YOLOObjectDetector
-import roaster_control
 
 def main_loop():
-    print("Iniciando Sistema de IA para Torrador de Café...")
-    roaster_control.configurar_gpio()
     webcam_obj = None
     cnn_classifier = None
     yolo_detector = None
@@ -25,13 +22,9 @@ def main_loop():
                 yolo_detector = YOLOObjectDetector(model_filename=config.YOLO_MODEL_FILENAME, models_dir=config.MODELS_DIR)
         except FileNotFoundError as e:
             print(f"Erro ao carregar modelo: {e}")
-            print("Certifique-se de que os modelos treinados (.tflite) estão na pasta 'models/'")
-            print("e que os nomes em 'config.py' estão corretos.")
             return
 
         webcam_obj = capturar_frame.iniciar_webcam()
-        print("Iniciando processo de torra (simulado ou real).")
-        roaster_control.controlar_aquecedor(True)
 
         ultima_classificacao = "inicializando"
         confianca_classificacao = 0.0
@@ -99,12 +92,7 @@ def main_loop():
 
 
             cv2.imshow("Visao do Torrador IA", frame_para_display)
-            if ultima_classificacao == config.ESTAGIO_FINAL_DESEJADO and \
-               confianca_classificacao >= config.CNN_CONFIDENCE_THRESHOLD:
-                print(f"ATINGIU ESTÁGIO FINAL: {config.ESTAGIO_FINAL_DESEJADO}. Finalizando.")
-                roaster_control.controlar_aquecedor(False)
-                roaster_control.controlar_ventoinha(True) 
-                break 
+            # Removido controle automático do torrador
 
 
             key = cv2.waitKey(500)
@@ -125,9 +113,6 @@ def main_loop():
         if webcam_obj:
             capturar_frame.liberar_webcam(webcam_obj)
         cv2.destroyAllWindows()
-        roaster_control.controlar_aquecedor(False)
-        roaster_control.controlar_ventoinha(False)
-        roaster_control.limpar_gpio()
         print("Sistema finalizado.")
 
 if __name__ == '__main__':
