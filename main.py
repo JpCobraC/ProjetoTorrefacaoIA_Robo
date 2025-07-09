@@ -4,7 +4,7 @@ import os
 
 import config
 from camera import capturar_frame
-from processamento_imagem import processar_imagem, desenhar_deteccoes_yolo, desenhar_roi_e_classificacao
+from processamento_imagem import processar_imagem
 from cnn.classificar_torra import CNNClassifier
 from yolo.detectar_graos import YOLOObjectDetector
 import roaster_control

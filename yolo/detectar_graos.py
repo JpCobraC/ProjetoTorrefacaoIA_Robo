@@ -1,31 +1,41 @@
-import tensorflow as tf
-import numpy as np
 import os
 import sys
 import cv2
-
+import numpy as np
+import tensorflow as tf
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import config
+from processamento_imagem.preprocess import preprocessar_frame_para_yolo
+
 
 class YOLOObjectDetector:
-    def __init__(self, model_filename=config.YOLO_MODEL_FILENAME, models_dir=config.MODELS_DIR):
-        model_path = os.path.join(models_dir, model_filename)
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Modelo YOLO não encontrado em {model_path}. Treine o modelo primeiro.")
+    def __init__(self, model_filename=None, models_dir=None, input_size=None, confidence_threshold=None):
+        self.model_filename = model_filename or config.YOLO_MODEL_FILENAME
+        self.models_dir = models_dir or config.MODELS_DIR
+        self.input_size = input_size or config.YOLO_INPUT_SIZE
+        self.confidence_threshold = confidence_threshold or config.YOLO_CONFIDENCE_THRESHOLD
 
-        self.interpreter = tf.lite.Interpreter(model_path=model_path)
+        self.model_path = os.path.join(self.models_dir, self.model_filename)
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(f"Modelo YOLO não encontrado em {self.model_path}. Treine o modelo primeiro.")
+
+        self.interpreter = tf.lite.Interpreter(model_path=self.model_path)
         self.interpreter.allocate_tensors()
         self.input_details = self.interpreter.get_input_details()
         self.output_details = self.interpreter.get_output_details()
-        print(f"Detector de Objetos YOLO carregado de {model_path}")
+        print(f"Detector de Objetos YOLO carregado de {self.model_path}")
 
 
-    def detectar(self, imagem_processada_para_yolo, original_frame_shape):
+    def detectar(self, imagem_processada_para_yolo=None, original_frame_shape=None):
         """
-        Detecta objetos em uma imagem já pré-processada.
+        Detecta objetos em um frame capturado da webcam e pré-processado.
+        Se não receber imagem_processada_para_yolo, faz a captura e o preprocessamento automaticamente.
         Retorna: lista de tuplas (x1, y1, x2, y2, score, classe_id)
                  EM COORDENADAS DA IMAGEM ORIGINAL.
         """
+        if imagem_processada_para_yolo is None or original_frame_shape is None:
+            imagem_processada_para_yolo, original_frame_shape = preprocessar_frame_para_yolo(input_size=self.input_size)
+
         if imagem_processada_para_yolo is None:
             print("YOLO: Imagem de entrada é None.")
             return []
@@ -64,25 +74,25 @@ class YOLOObjectDetector:
         boxes = []
         scores = []
         class_ids = []
-        
+
         # Obter dimensões originais e do input para reescalar as caixas
         frame_h, frame_w = original_frame_shape[:2]
-        input_h, input_w = config.YOLO_INPUT_SIZE # O tamanho para o qual a imagem foi redimensionada
+        input_h, input_w = self.input_size # O tamanho para o qual a imagem foi redimensionada
 
         # Iterar sobre as detecções (assumindo raw_detections[0] para batch_size=1)
         # Este loop é um EXEMPLO e provavelmente precisará ser ajustado:
         for i in range(raw_detections.shape[1]): # raw_detections.shape[1] é num_boxes
             detection = raw_detections[0, i, :]
-            
+
             # Exemplo para formato (cx, cy, w, h, obj_conf, class_scores...)
             obj_confidence = detection[4]
-            if obj_confidence > config.YOLO_CONFIDENCE_THRESHOLD:
+            if obj_confidence > self.confidence_threshold:
                 class_scores = detection[5:] # Probabilidades das classes
                 class_id = np.argmax(class_scores)
                 max_class_score = class_scores[class_id]
                 confidence_score = obj_confidence * max_class_score # Ou apenas obj_confidence
 
-                if confidence_score > config.YOLO_CONFIDENCE_THRESHOLD:
+                if confidence_score > self.confidence_threshold:
                     # Coordenadas do centro, largura, altura (normalizadas pelo input_size)
                     cx, cy, w, h = detection[0], detection[1], detection[2], detection[3]
 
@@ -91,7 +101,7 @@ class YOLOObjectDetector:
                     y1_input = (cy - h / 2) * input_h
                     x2_input = (cx + w / 2) * input_w
                     y2_input = (cy + h / 2) * input_h
-                    
+
                     boxes.append([x1_input, y1_input, x2_input, y2_input])
                     scores.append(float(confidence_score))
                     class_ids.append(int(class_id))
@@ -118,7 +128,7 @@ class YOLOObjectDetector:
                 nms_boxes.append([int(x1), int(y1), int(x2-x1), int(y2-y1)])
 
 
-            indices = cv2.dnn.NMSBoxes(nms_boxes, scores, config.YOLO_CONFIDENCE_THRESHOLD, nms_threshold=0.45)
+            indices = cv2.dnn.NMSBoxes(nms_boxes, scores, self.confidence_threshold, nms_threshold=0.45)
         else:
             indices = []
 

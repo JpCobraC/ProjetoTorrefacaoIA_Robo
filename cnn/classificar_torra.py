@@ -4,7 +4,10 @@ import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import config
+import cv2
+from yolo.detectar_graos import YOLOObjectDetector
 
 class CNNClassifier:
     def __init__(self, model_filename=config.CNN_MODEL_FILENAME, models_dir=config.MODELS_DIR):
@@ -16,10 +19,6 @@ class CNNClassifier:
         self.interpreter.allocate_tensors()
         self.input_details = self.interpreter.get_input_details()
         self.output_details = self.interpreter.get_output_details()
-        print(f"Classificador CNN carregado de {model_path}")
-        print(f"Detalhes da entrada CNN: {self.input_details}")
-        print(f"Detalhes da saída CNN: {self.output_details}")
-
 
     def classificar(self, imagem_processada_para_cnn):
         if imagem_processada_para_cnn is None:
@@ -54,20 +53,26 @@ class CNNClassifier:
         return nivel_torra, confianca
 
 if __name__ == '__main__':
-    print("Testando o classificador CNN...")
     try:
-        dummy_image_data = np.random.rand(1, config.CNN_INPUT_SIZE[0], config.CNN_INPUT_SIZE[1], 3).astype(np.float32)
+        detector = YOLOObjectDetector()
+        detections = detector.detectar()
 
-        model_file = os.path.join(config.MODELS_DIR, config.CNN_MODEL_FILENAME)
-        if not os.path.exists(model_file):
-            print(f"Modelo de teste {model_file} não encontrado. Crie um placeholder ou treine um modelo.")
-            if not os.path.exists(config.MODELS_DIR): os.makedirs(config.MODELS_DIR)
-            print("Pulando teste de inferência pois o modelo real não foi encontrado.")
-
+        if not detections:
+            print("Nenhum grão detectado para classificar.")
         else:
             classifier = CNNClassifier()
-            nivel, conf = classifier.classificar(dummy_image_data)
-            print(f"Classificação da imagem dummy: Nível={nivel}, Confiança={conf:.2f}")
-
+            for i, (x1, y1, x2, y2, score, class_id) in enumerate(detections):
+                from processamento_imagem.preprocess import iniciar_webcam, capturar_frame_ativo, liberar_webcam
+                cap = iniciar_webcam()
+                try:
+                    frame = capturar_frame_ativo(cap)
+                finally:
+                    liberar_webcam(cap)
+                grao_crop = frame[y1:y2, x1:x2]
+                grao_resized = cv2.resize(grao_crop, config.CNN_INPUT_SIZE)
+                grao_resized = grao_resized.astype(np.float32) / 255.0
+                grao_resized = np.expand_dims(grao_resized, axis=0)
+                nivel, conf = classifier.classificar(grao_resized)
+                print(f"Grão {i+1}: Nível={nivel}, Confiança={conf:.2f}, Score YOLO={score:.2f}, Classe YOLO={class_id}")
     except Exception as e:
-        print(f"Erro no teste do classificador CNN: {e}")
+        print(f"Erro no pipeline YOLO+CNN: {e}")
