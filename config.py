@@ -2,8 +2,8 @@ CAMERA_ID = 0
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 
-YOLO_MODEL_FILENAME = 'seu_modelo_yolo.tflite'
-CNN_MODEL_FILENAME = 'seu_modelo_cnn.tflite'
+YOLO_MODEL_FILENAME = 'modelo_yolo.tflite'
+CNN_MODEL_FILENAME = 'modelo_cnn.tflite'
 MODELS_DIR = 'models'
 
 YOLO_INPUT_SIZE = (256, 256) 
