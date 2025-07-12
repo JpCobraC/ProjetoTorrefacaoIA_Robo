@@ -7,7 +7,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import config
 from processamento_imagem.preprocess import preprocessar_frame_para_yolo
 
-
 class YOLOObjectDetector:
     def __init__(self, model_filename=None, models_dir=None, input_size=None, confidence_threshold=None):
         self.model_filename = model_filename or config.YOLO_MODEL_FILENAME

@@ -1,10 +1,11 @@
 import cv2
+import numpy as np
 import time
 import os
 
 import config
 from camera import capturar_frame
-from processamento_imagem import processar_imagem
+from processamento_imagem import preprocess
 from cnn.classificar_torra import CNNClassifier
 from yolo.detectar_graos import YOLOObjectDetector
 
@@ -12,7 +13,7 @@ def main_loop():
     webcam_obj = None
     cnn_classifier = None
     yolo_detector = None
-
+    
     USAR_YOLO_PARA_ROI = False
 
     try:
@@ -40,15 +41,30 @@ def main_loop():
             crop_para_cnn = None
 
             if USAR_YOLO_PARA_ROI and yolo_detector:
-                img_proc_yolo = processar_imagem.preprocessar_para_modelo(frame_bruto.copy(), config.YOLO_INPUT_SIZE)
+                # Preprocessamento para YOLO usando o frame atual
+                INITIALX, INITIALY, WIDTH, HEIGHT = 129, 48, 347, 356
+                NEW_WIDTH, NEW_HEIGHT = 256, 256
+                y_final_cut = INITIALY + HEIGHT
+                x_final_cut = INITIALX + WIDTH
+                y_final_cut = min(y_final_cut, frame_bruto.shape[0])
+                x_final_cut = min(x_final_cut, frame_bruto.shape[1])
+                image_cropped = frame_bruto[INITIALY:y_final_cut, INITIALX:x_final_cut]
+                blob = cv2.dnn.blobFromImage(image_cropped,
+                                             scalefactor=(1.0/127.5),
+                                             size=(NEW_WIDTH, NEW_HEIGHT),
+                                             mean=(127.5, 127.5, 127.5),
+                                             swapRB=True,
+                                             crop=False)
+                img_proc_yolo = blob.astype(np.float32)
                 if img_proc_yolo is not None:
                     detections = yolo_detector.detectar(img_proc_yolo, frame_bruto.shape)
-                    frame_para_display = processar_imagem.desenhar_deteccoes_yolo(frame_para_display, detections)
-
+                    # Se existir a função desenhar_deteccoes_yolo, use, senão apenas continue
+                    if hasattr(preprocess, 'desenhar_deteccoes_yolo'):
+                        frame_para_display = preprocess.desenhar_deteccoes_yolo(frame_para_display, detections)
                     if detections:
                         x1, y1, x2, y2, score, _ = detections[0]
                         if x1 < x2 and y1 < y2:
-                             crop_para_cnn = frame_bruto[y1:y2, x1:x2]
+                            crop_para_cnn = frame_bruto[y1:y2, x1:x2]
                         else:
                             print("YOLO ROI inválido (x1>=x2 ou y1>=y2). Usando ROI fixo de fallback.")
                             USAR_YOLO_PARA_ROI = False
@@ -71,7 +87,11 @@ def main_loop():
                 roi_para_desenho = (roi_x, roi_y, roi_w, roi_h)
 
             if crop_para_cnn is not None and crop_para_cnn.size > 0:
-                img_proc_cnn = processar_imagem.preprocessar_para_modelo(crop_para_cnn.copy(), config.CNN_INPUT_SIZE)
+                # Se existir a função preprocessar_para_modelo, use, senão apenas continue
+                if hasattr(preprocess, 'preprocessar_para_modelo'):
+                    img_proc_cnn = preprocess.preprocessar_para_modelo(crop_para_cnn.copy(), config.CNN_INPUT_SIZE)
+                else:
+                    img_proc_cnn = crop_para_cnn.copy()
                 if img_proc_cnn is not None and cnn_classifier:
                     ultima_classificacao, confianca_classificacao = cnn_classifier.classificar(img_proc_cnn)
                 else:
@@ -83,17 +103,17 @@ def main_loop():
 
             texto_display_cnn = f"{ultima_classificacao} ({confianca_classificacao:.2f})"
             if not USAR_YOLO_PARA_ROI:
-                 frame_para_display = processar_imagem.desenhar_roi_e_classificacao(
-                     frame_para_display, roi_para_desenho, texto_display_cnn
-                 )
+                # Se existir a função desenhar_roi_e_classificacao, use, senão apenas continue
+                if hasattr(preprocess, 'desenhar_roi_e_classificacao'):
+                    frame_para_display = preprocess.desenhar_roi_e_classificacao(
+                        frame_para_display, roi_para_desenho, texto_display_cnn
+                    )
             else:
                 cv2.putText(frame_para_display, texto_display_cnn, (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
 
 
             cv2.imshow("Visao do Torrador IA", frame_para_display)
-            # Removido controle automático do torrador
-
 
             key = cv2.waitKey(500)
             if key & 0xFF == ord('q'):
