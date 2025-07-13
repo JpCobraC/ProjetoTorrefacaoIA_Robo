@@ -1,139 +1,91 @@
 import cv2
-import numpy as np
 import time
 import os
+import sys
+
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 import config
 from camera import capturar_frame
-from processamento_imagem import preprocess
-from cnn.classificar_torra import CNNClassifier
+from processamento_imagem.preprocess import aplicar_crop_customizado
 from yolo.detectar_graos import YOLOObjectDetector
+from cnn.classificar_torra import CNNClassifier
 
-def main_loop():
-    webcam_obj = None
-    cnn_classifier = None
-    yolo_detector = None
-    
-    USAR_YOLO_PARA_ROI = False
-
+def main_pipeline():
+    """
+    Função principal que executa o pipeline completo:
+    Câmera -> Crop -> Detecção YOLO -> Classificação CNN
+    """
+    webcam = None
     try:
-        try:
-            cnn_classifier = CNNClassifier(model_filename=config.CNN_MODEL_FILENAME, models_dir=config.MODELS_DIR)
-            if USAR_YOLO_PARA_ROI:
-                yolo_detector = YOLOObjectDetector(model_filename=config.YOLO_MODEL_FILENAME, models_dir=config.MODELS_DIR)
-        except FileNotFoundError as e:
-            print(f"Erro ao carregar modelo: {e}")
-            return
+        # 1. INICIALIZAÇÃO (uma única vez)
+        print("--- Inicializando sistemas... ---")
+        yolo_detector = YOLOObjectDetector()
+        cnn_classifier = CNNClassifier()
+        webcam = capturar_frame.iniciar_webcam(config.CAMERA_ID)
+        print("--- Sistemas prontos. Iniciando loop principal. ---")
+        print("Pressione 'q' na janela de visualização para sair.")
 
-        webcam_obj = capturar_frame.iniciar_webcam()
-
-        ultima_classificacao = "inicializando"
-        confianca_classificacao = 0.0
-
+        # 2. LOOP PRINCIPAL
         while True:
-            frame_bruto = capturar_frame.capturar_frame_ativo(webcam_obj)
+            # Etapa 1: Capturar frame da webcam
+            frame_bruto = capturar_frame.capturar_frame_ativo(webcam)
             if frame_bruto is None:
-                print("Falha ao capturar frame da webcam. Tentando novamente...")
+                print("Aviso: Falha ao capturar frame.")
                 time.sleep(0.1)
                 continue
 
-            frame_para_display = frame_bruto.copy()
-            crop_para_cnn = None
+            # Etapa 2: Aplicar pré-processamento
+            area_de_interesse = aplicar_crop_customizado(frame_bruto)
+            if area_de_interesse is None or area_de_interesse.size == 0:
+                print("Aviso: O recorte da área de interesse resultou em uma imagem vazia.")
+                cv2.imshow("Visao do Torrador IA", frame_bruto) # Mostra o frame original em caso de erro
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+                continue
 
-            if USAR_YOLO_PARA_ROI and yolo_detector:
-                # Preprocessamento para YOLO usando o frame atual
-                INITIALX, INITIALY, WIDTH, HEIGHT = 129, 48, 347, 356
-                NEW_WIDTH, NEW_HEIGHT = 256, 256
-                y_final_cut = INITIALY + HEIGHT
-                x_final_cut = INITIALX + WIDTH
-                y_final_cut = min(y_final_cut, frame_bruto.shape[0])
-                x_final_cut = min(x_final_cut, frame_bruto.shape[1])
-                image_cropped = frame_bruto[INITIALY:y_final_cut, INITIALX:x_final_cut]
-                blob = cv2.dnn.blobFromImage(image_cropped,
-                                             scalefactor=(1.0/127.5),
-                                             size=(NEW_WIDTH, NEW_HEIGHT),
-                                             mean=(127.5, 127.5, 127.5),
-                                             swapRB=True,
-                                             crop=False)
-                img_proc_yolo = blob.astype(np.float32)
-                if img_proc_yolo is not None:
-                    detections = yolo_detector.detectar(img_proc_yolo, frame_bruto.shape)
-                    # Se existir a função desenhar_deteccoes_yolo, use, senão apenas continue
-                    if hasattr(preprocess, 'desenhar_deteccoes_yolo'):
-                        frame_para_display = preprocess.desenhar_deteccoes_yolo(frame_para_display, detections)
-                    if detections:
-                        x1, y1, x2, y2, score, _ = detections[0]
-                        if x1 < x2 and y1 < y2:
-                            crop_para_cnn = frame_bruto[y1:y2, x1:x2]
-                        else:
-                            print("YOLO ROI inválido (x1>=x2 ou y1>=y2). Usando ROI fixo de fallback.")
-                            USAR_YOLO_PARA_ROI = False
-                    else:
-                        print("Nenhum objeto detectado pelo YOLO. Usando ROI fixo de fallback.")
-                        USAR_YOLO_PARA_ROI = False
-                else:
-                    print("Falha ao pré-processar imagem para YOLO.")
-                    USAR_YOLO_PARA_ROI = False
+            # Etapa 3: Detecção com YOLO na área de interesse
+            # Este método já retorna o frame com as detecções e a lista de grãos recortados
+            frame_com_detecoes, graos_recortados = yolo_detector.detectar_e_recortar(area_de_interesse)
 
-            if not USAR_YOLO_PARA_ROI or crop_para_cnn is None or crop_para_cnn.size == 0:
-                roi_x, roi_y, roi_w, roi_h = 150, 150, 120, 120
+            # Etapa 4: Classificação com CNN em cada grão detectado
+            resultados_cnn = []
+            if graos_recortados:
+                for grao in graos_recortados:
+                    # Pré-processamento específico para a CNN (se houver)
+                    # Assumindo que a classe CNNClassifier tem um método para isso
+                    classificacao, confianca = cnn_classifier.classificar(grao)
+                    resultados_cnn.append(f"{classificacao} ({confianca:.0%})")
+            
+            # Etapa 5: Exibição dos resultados
+            # Adiciona informações de texto no frame que já tem as caixas do YOLO
+            texto_yolo = f"Graos Detectados: {len(graos_recortados)}"
+            cv2.putText(frame_com_detecoes, texto_yolo, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            
+            # Mostra os resultados da CNN
+            texto_cnn = "CNN: " + ", ".join(resultados_cnn[:4]) # Mostra os 4 primeiros resultados
+            if len(resultados_cnn) > 4:
+                texto_cnn += "..."
+            cv2.putText(frame_com_detecoes, texto_cnn, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
 
-                if (roi_y + roi_h > frame_bruto.shape[0] or roi_x + roi_w > frame_bruto.shape[1] or
-                    roi_y < 0 or roi_x < 0 or roi_w <=0 or roi_h <=0 ):
-                    print(f"ERRO: ROI Fixo ({roi_x},{roi_y},{roi_w},{roi_h}) inválido ou fora dos limites da imagem ({frame_bruto.shape}).")
-                    cv2.rectangle(frame_para_display, (roi_x, roi_y), (roi_x + roi_w, roi_y + roi_h), (0,0,255), 2) # Desenha ROI inválido
-                else:
-                    crop_para_cnn = frame_bruto[roi_y:roi_y+roi_h, roi_x:roi_x+roi_w]
-                roi_para_desenho = (roi_x, roi_y, roi_w, roi_h)
+            cv2.imshow("Visao do Torrador IA", frame_com_detecoes)
 
-            if crop_para_cnn is not None and crop_para_cnn.size > 0:
-                # Se existir a função preprocessar_para_modelo, use, senão apenas continue
-                if hasattr(preprocess, 'preprocessar_para_modelo'):
-                    img_proc_cnn = preprocess.preprocessar_para_modelo(crop_para_cnn.copy(), config.CNN_INPUT_SIZE)
-                else:
-                    img_proc_cnn = crop_para_cnn.copy()
-                if img_proc_cnn is not None and cnn_classifier:
-                    ultima_classificacao, confianca_classificacao = cnn_classifier.classificar(img_proc_cnn)
-                else:
-                    ultima_classificacao = "erro_proc_cnn"
-                    confianca_classificacao = 0.0
-            else:
-                ultima_classificacao = "erro_crop_cnn"
-                confianca_classificacao = 0.0
-
-            texto_display_cnn = f"{ultima_classificacao} ({confianca_classificacao:.2f})"
-            if not USAR_YOLO_PARA_ROI:
-                # Se existir a função desenhar_roi_e_classificacao, use, senão apenas continue
-                if hasattr(preprocess, 'desenhar_roi_e_classificacao'):
-                    frame_para_display = preprocess.desenhar_roi_e_classificacao(
-                        frame_para_display, roi_para_desenho, texto_display_cnn
-                    )
-            else:
-                cv2.putText(frame_para_display, texto_display_cnn, (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-
-
-            cv2.imshow("Visao do Torrador IA", frame_para_display)
-
-            key = cv2.waitKey(500)
-            if key & 0xFF == ord('q'):
-                print("Tecla 'q' pressionada. Encerrando...")
+            # Condição de saída
+            if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
-    except capturar_frame.WebcamError as e:
-        print(f"Erro de Webcam: {e}")
-    except KeyboardInterrupt:
-        print("Programa interrompido pelo usuário.")
     except Exception as e:
-        print(f"Ocorreu um erro inesperado no loop principal: {e}")
+        print(f"Ocorreu um erro crítico na aplicação: {e}")
         import traceback
         traceback.print_exc()
     finally:
-        print("Finalizando o programa e limpando recursos...")
-        if webcam_obj:
-            capturar_frame.liberar_webcam(webcam_obj)
+        # Garante que os recursos sejam liberados
+        print("\n--- Finalizando a aplicação... ---")
+        if webcam:
+            capturar_frame.liberar_webcam(webcam)
         cv2.destroyAllWindows()
-        print("Sistema finalizado.")
+        print("Recursos liberados. Sistema finalizado.")
+
 
 if __name__ == '__main__':
-    main_loop()
+    main_pipeline()

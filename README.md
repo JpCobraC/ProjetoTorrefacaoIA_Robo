@@ -1,1 +1,3 @@
-yolo task=detect mode=train model=yolov8n.pt data=graos_dataset/data.yaml epochs=50 imgsz=640
+### Detecção e classificação de níveis de torra de café utilizando YOLO e CNN's seguindo a escala AGTRON
+
+# Em desenvolvimento

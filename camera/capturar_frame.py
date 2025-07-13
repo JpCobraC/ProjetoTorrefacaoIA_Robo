@@ -6,18 +6,24 @@ class WebcamError(Exception):
 
 def iniciar_webcam():
     cap = cv2.VideoCapture(config.CAMERA_ID)
+
     if not cap.isOpened():
         raise WebcamError(f"Erro: Não foi possível abrir a webcam ID {config.CAMERA_ID}.")
+        
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.FRAME_WIDTH)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.FRAME_HEIGHT)
+    
+    print(f"Webcam ID {config.CAMERA_ID} iniciada com sucesso.")
     return cap
 
 def capturar_frame_ativo(cap):
     if not cap or not cap.isOpened():
-        raise WebcamError("Erro: Objeto da webcam não está iniciado ou é inválido.")
+        raise WebcamError("Erro: Objeto da webcam não está iniciado ou foi desconectado.")
+    
     ret, frame = cap.read()
-    if not ret:
-        raise WebcamError("Erro: Não foi possível capturar o frame.")
+    if not ret or frame is None:
+        raise WebcamError("Erro: Não foi possível capturar o frame da câmera.")
+        
     return frame
 
 def liberar_webcam(cap):
