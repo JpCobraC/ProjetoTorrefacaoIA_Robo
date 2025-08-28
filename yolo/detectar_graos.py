@@ -17,11 +17,12 @@ class YOLOObjectDetector:
         self.confidence_threshold = config.YOLO_CONFIDENCE_THRESHOLD
         
         if not os.path.exists(self.model_path):
-            raise FileNotFoundError(f"Modelo YOLO não encontrado em {self.model_path}. Baixe o 'best.pt' do Colab.")
-        
+            raise FileNotFoundError(f"Modelo YOLO não encontrado em {self.model_path}.")
+            
         # Carrega o modelo .pt diretamente com a classe YOLO
         try:
             self.model = YOLO(self.model_path)
+            self.model.to('cpu')
             print(f"Detector de Objetos YOLO carregado de {self.model_path}")
             print(f"Limiar de Confiança: {self.confidence_threshold}")
         except Exception as e:
