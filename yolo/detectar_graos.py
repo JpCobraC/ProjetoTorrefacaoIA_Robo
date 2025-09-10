@@ -1,6 +1,5 @@
 import os
 import sys
-import cv2
 from ultralytics import YOLO 
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -8,9 +7,6 @@ import config
 
 class YOLOObjectDetector:
     def __init__(self, model_filename=None, models_dir=None):
-        """
-        Inicializa o detector de objetos usando a biblioteca Ultralytics diretamente.
-        """
         self.model_filename = model_filename or config.YOLO_MODEL_FILENAME
         self.models_dir = models_dir or config.MODELS_DIR
         self.model_path = os.path.join(self.models_dir, self.model_filename)
@@ -34,9 +30,6 @@ class YOLOObjectDetector:
         Detecta objetos usando o modelo .pt e retorna o frame e os recortes.
         O pós-processamento é feito pela própria biblioteca.
         """
-        if frame_original is None:
-            print("YOLO: Frame original é None.")
-            return None, []
 
         # Realiza a predição. A biblioteca cuida do pré-processamento.
         results = self.model.predict(source=frame_original, conf=self.confidence_threshold, verbose=False)
@@ -47,7 +40,6 @@ class YOLOObjectDetector:
         frame_com_detecoes = result.plot() # 'plot()' já desenha as caixas e labels!
         imagens_recortadas = []
 
-        # A biblioteca também facilita o acesso às caixas para recorte
         for box in result.boxes:
             # Extrai coordenadas no formato (x1, y1, x2, y2)
             coords = box.xyxy[0].cpu().numpy().astype(int)
@@ -58,6 +50,6 @@ class YOLOObjectDetector:
                 imagens_recortadas.append(recorte)
 
         if not imagens_recortadas:
-            print("YOLO: Nenhuma detecção encontrada com os limiares atuais.")
+            print("YOLO: Nenhuma detecção encontraa com os limiares atuais.")
 
         return frame_com_detecoes, imagens_recortadas
