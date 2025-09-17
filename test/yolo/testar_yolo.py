@@ -7,7 +7,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 # Importa as classes e funções customizadas
 
 from yolo.detectar_graos import YOLOObjectDetector
-from processamento_imagem.preprocess import aplicar_crop_customizado
 
 def testar_pipeline_yolo():
 
@@ -35,10 +34,11 @@ def testar_pipeline_yolo():
             frame = cv2.imread(image_path)
 
             # ETAPA 2: Passa a imagem pelo seu pré-processamento (crop)
-            frame_recortado_area = aplicar_crop_customizado(frame)
+            # Removido: frame_recortado_area = aplicar_crop_customizado(frame)
             
-            # ETAPA 3: Passa a imagem JÁ RECORTADA para o detector YOLO
-            frame_resultado, graos_recortados = detector.detectar_e_recortar(frame_recortado_area)
+            # ETAPA 3: Passa a imagem para o detector YOLO
+            # Alterado para usar 'frame' diretamente
+            frame_resultado, graos_recortados = detector.detectar_e_recortar(frame)
 
             # ETAPA 4: Salva os resultados
             output_image_path = os.path.join(output_dir_geral, filename)

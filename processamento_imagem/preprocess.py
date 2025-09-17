@@ -2,27 +2,12 @@ import cv2
 import numpy as np
 import config
 
-def aplicar_crop_customizado(frame):
-    if frame is None:
-        print("Erro de pré-processamento: frame de entrada para crop é None.")
-        return None
-
-    INITIALX, INITIALY, WIDTH, HEIGHT = 129, 48, 347, 356
-
-    img_height, img_width = frame.shape[:2]
-    y_final_cut = min(INITIALY + HEIGHT, img_height)
-    x_final_cut = min(INITIALX + WIDTH, img_width)
-
-    imagem_recortada = frame[INITIALY:y_final_cut, INITIALX:x_final_cut]
-    
-    return imagem_recortada
-
 def preprocessar_grao_para_cnn(imagem_grao):
     if imagem_grao is None or imagem_grao.size == 0:
         return None
     
     # Usa o tamanho do config, ou um valor padrão se não encontrar
-    CNN_INPUT_SIZE = getattr(config, 'CNN_INPUT_SIZE', (128, 128))
+    CNN_INPUT_SIZE = getattr(config, 'CNN_INPUT_SIZE', (64, 64))
 
     # Redimensiona para o tamanho de entrada da CNN
     grao_resized = cv2.resize(imagem_grao, CNN_INPUT_SIZE)
