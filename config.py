@@ -1,3 +1,34 @@
+import os
+from dotenv import load_dotenv
+
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env.local')
+
+load_dotenv(dotenv_path=dotenv_path)
+
+ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY")
+ROBOFLOW_MODEL_ID = os.getenv("ROBOFLOW_MODEL_ID")
+
+CAMERA_ID = 0
+FRAME_WIDTH = 640
+FRAME_HEIGHT = 480
+
+YOLO_MODEL_FILENAME = 'best.pt'
+CNN_MODEL_FILENAME = 'modelo_cnn.tflite'
+MODELS_DIR = 'models'
+
+YOLO_INPUT_SIZE = (640, 640) 
+CNN_INPUT_SIZE = (128, 128)
+
+CNN_CLASSES = ['25', '35', '45', '55', '65', '75', '85', '95', 'raw']
+
+YOLO_CONFIDENCE_THRESHOLD = 0.5
+CNN_CONFIDENCE_THRESHOLD = 0.6
+YOLO_NMS_THRESHOLD = 0.45
+
+PIN_AQUECEDOR = 17
+PIN_VENTOINHA = 18
+PIN_MOTOR_TAMBOR = 27
+
 CAMERA_ID = 0
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480

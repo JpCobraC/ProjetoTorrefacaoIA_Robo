@@ -82,7 +82,7 @@ dmypy.json
 .pytype/
 
 # Environments
-.env*
+.env.local
 .venv*
 env*/
 venv*/
