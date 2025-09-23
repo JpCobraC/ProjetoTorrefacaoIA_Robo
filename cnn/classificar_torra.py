@@ -1,3 +1,4 @@
+# No arquivo: cnn/classificar_torra_api.py
 import os
 import sys
 from inference import get_model
@@ -8,14 +9,16 @@ import config
 
 class CNNClassifierAPI:
     def __init__(self):
-        try:
-            self.api_key = config.ROBOFLOW_API_KEY
-            self.model_id = config.ROBOFLOW_MODEL_ID
-            self.confidence_threshold = config.CNN_CONFIDENCE_THRESHOLD
-            self.classes = config.CNN_CLASSES
-        except AttributeError as e:
-            raise AttributeError(f"Erro: constante não encontrada no config.py. Verifique se ROBOFLOW_API_KEY e ROBOFLOW_MODEL_ID estão definidos. Detalhe: {e}")
+        # Puxa as informações do Roboflow do arquivo config.py
+        self.api_key = config.ROBOFLOW_API_KEY
+        self.model_id = config.ROBOFLOW_MODEL_ID
+        self.confidence_threshold = config.CNN_CONFIDENCE_THRESHOLD
+        self.classes = config.CNN_CLASSES
+        
+        if not self.api_key or not self.model_id:
+             raise ValueError("ERRO: ROBOFLOW_API_KEY e ROBOFLOW_MODEL_ID devem ser definidos no seu .env.local e carregados pelo config.py")
 
+        # O resto do código da classe está perfeito...
         try:
             self.model = get_model(model_id=self.model_id, api_key=self.api_key)
             print(f"Classificador CNN (API) carregado para o modelo: {self.model_id}")
@@ -24,24 +27,16 @@ class CNNClassifierAPI:
             raise e
 
     def classificar(self, imagem_grao):
-        """
-        Recebe uma imagem de grão (array NumPy), envia para a API e retorna 
-        a classe e a confiança no mesmo formato da sua classe TFLite.
-        """
+        # ... (seu código de classificação está perfeito) ...
         if imagem_grao is None:
             return "desconhecido", 0.0
 
         try:
-            # A API do Roboflow aceita um array NumPy (imagem do OpenCV) diretamente
             results = self.model.infer(imagem_grao)[0]
-            
-            # Extrai a previsão principal
             classe_prevista = results.top
             confianca = float(results.confidence)
-            
             nivel_torra = "incerto"
 
-            # Aplica a mesma lógica de limiar e 'incerto' que você definiu
             if classe_prevista in self.classes:
                 if confianca >= self.confidence_threshold:
                     nivel_torra = classe_prevista
