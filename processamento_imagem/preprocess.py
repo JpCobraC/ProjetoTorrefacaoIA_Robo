@@ -13,14 +13,6 @@ except ImportError:
     preprocess_input = None
     TENSORFLOW_DISPONIVEL = False
 
-def aplicar_crop_customizado(frame):
-    if frame is None: return None
-    INITIALX, INITIALY, WIDTH, HEIGHT = 129, 48, 347, 356
-    img_height, img_width = frame.shape[:2]
-    y_final_cut = min(INITIALY + HEIGHT, img_height)
-    x_final_cut = min(INITIALX + WIDTH, img_width)
-    return frame[INITIALY:y_final_cut, INITIALX:x_final_cut]
-
 def preprocessar_grao_para_cnn(imagem_grao):
     if imagem_grao is None or imagem_grao.size == 0:
         return None
