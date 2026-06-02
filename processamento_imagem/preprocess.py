@@ -1,32 +1,37 @@
-# No arquivo: processamento_imagem/preprocess.py
-
 import cv2
 import numpy as np
 
-# Tenta importar o config e a função oficial de pré-processamento
+    # Importa o config apenas para pegar o tamanho da imagem, sem puxar bibliotecas pesadas
 try:
+    import sys
+    import os
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     import config
-    from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
-    TENSORFLOW_DISPONIVEL = True
 except ImportError:
     config = None
-    preprocess_input = None
-    TENSORFLOW_DISPONIVEL = False
 
-def preprocessar_grao_para_cnn(imagem_grao):
+def preprocessar_grao_para_clip(imagem_grao):
+    """
+    Prepara o recorte do grão (OpenCV) para o formato esperado pelos modelos de IA.
+    Substitui completamente o uso do TensorFlow Keras para evitar conflitos de memória e Segmentation Faults no Linux.
+    """
     if imagem_grao is None or imagem_grao.size == 0:
         return None
-    
-    CNN_INPUT_SIZE = getattr(config, 'CNN_INPUT_SIZE', (128, 128))
-    grao_resized = cv2.resize(imagem_grao, CNN_INPUT_SIZE)
-    input_cnn = np.expand_dims(grao_resized, axis=0)
-
-    # --- A LINHA MAIS IMPORTANTE DO PROJETO ---
-    # Esta função converte os pixels para a escala exata [-1, 1] que o MobileNetV2 espera.
-    if TENSORFLOW_DISPONIVEL:
-        input_cnn = preprocess_input(input_cnn)
-    else:
-        print("AVISO: TensorFlow completo não foi encontrado. A normalização pode estar incorreta.")
-        input_cnn = input_cnn.astype(np.float32) / 255.0
         
-    return input_cnn
+    # 1. Busca o tamanho esperado no config ou usa o padrão (128x128)
+    CLIP_INPUT_SIZE = getattr(config, 'CLIP_INPUT_SIZE', (128, 128))
+        
+    # 2. Redimensiona a imagem usando o OpenCV (rápido e seguro em CPU)
+    grao_resized = cv2.resize(imagem_grao, CLIP_INPUT_SIZE)
+        
+    # 3. Adiciona a dimensão do "batch" (necessário para a maioria das inferências locais)
+    # Transforma de (128, 128, 3) para (1, 128, 128, 3)
+    input_clip = np.expand_dims(grao_resized, axis=0)
+
+    # 4. Normalização Matemática Estilo MobileNetV2 (SEM usar TensorFlow)
+    # O MobileNetV2 espera valores entre -1 e 1.
+    # Fórmula padrão: (imagem / 127.5) - 1.0
+    input_clip = input_clip.astype(np.float32)
+    input_clip = (input_clip / 127.5) - 1.0
+            
+    return input_clip

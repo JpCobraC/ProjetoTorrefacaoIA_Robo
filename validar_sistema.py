@@ -1,18 +1,23 @@
 import os
 import sys
+#Garante que a GPU não sera chamada
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
+
+
+#Garante os caminhos corretos do repositório
+sys.path.append(os.getcwd())
+
 import cv2
 import time
-import shutil
 import numpy as np
 from collections import Counter
 import re
-
-sys.path.append(os.getcwd())
+from cnn.clip_classifier import CLIPClassifier
 
 try:
-    from processamento_imagem.preprocess import preprocessar_grao_para_cnn
+    from processamento_imagem.preprocess import preprocessar_grao_para_clip
     from yolo.detectar_graos import YOLOObjectDetector
-    from cnn.classificar_torra import CNNClassifierAPI
+    from cnn.clip_classifier import CLIPClassifier
 except ModuleNotFoundError as e:
     print(f"ERRO DE IMPORTAÇÃO: {e}")
     sys.exit(1)
@@ -49,7 +54,7 @@ def main():
     print("\nInicializando modelos...")
     try:
         yolo_detector = YOLOObjectDetector()
-        cnn_classifier = CNNClassifierAPI()
+        cnn_classifier = CLIPClassifier()
     except Exception as e:
         print(f"ERRO: Falha ao carregar os modelos. Verifique seu config.py e .env.local. Detalhe: {e}")
         return
