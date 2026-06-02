@@ -1,0 +1,11 @@
+tensorflow>=2.8.0
+opencv-python-headless>=4.5
+ultralytics
+roboflow
+python-dotenv
+numpy>=1.20
+matplotlib
+scikit-learn
+pillow
+h5py
+tqdm
