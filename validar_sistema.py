@@ -98,5 +98,36 @@ def main():
     print(f"\n--- ANÁLISE EM LOTE CONCLUÍDA em {end_time - start_time:.2f} segundos ---")
 
 
+def analisar_para_api(frame_ao_vivo):
+    """
+    Recebe um frame direto da câmara em tempo real, 
+    roda o YOLO+CLIP e DEVOLVE os valores.
+    """
+    try:
+        yolo_detector = YOLOObjectDetector()
+        cnn_classifier = CLIPClassifier()
+        
+        # Proteção caso a câmara envie um frame vazio
+        if frame_ao_vivo is None:
+            return 0.0, "Erro na Câmara", 0.0
+        
+        # O YOLO agora corta a imagem que veio diretamente do vídeo ao vivo!
+        _, graos_recortados = yolo_detector.detectar_e_recortar(frame_ao_vivo)
+        
+        classificacoes_cnn = []
+        if graos_recortados:
+            for grao_crop in graos_recortados:
+                classificacao, _ = cnn_classifier.classificar(grao_crop)
+                classificacoes_cnn.append(classificacao)
+                
+        estatisticas = analisar_distribuicao_torra(classificacoes_cnn)
+        
+        return estatisticas['media_agtron'], estatisticas['classe_dominante'], estatisticas['desvio_padrao']
+        
+    except Exception as e:
+        print(f"Erro na IA durante a chamada da API: {e}")
+        return 0.0, "Erro no Python", 0.0
+
+
 if __name__ == '__main__':
     main()
