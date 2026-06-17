@@ -9,7 +9,7 @@ import config
 from camera import capturar_frame
 from processamento_imagem.preprocess import preprocessar_grao_para_clip
 from yolo.detectar_graos import YOLOObjectDetector
-from cnn.clip_classifier import CLIPClassifier
+from clip_.clip_classifier import CLIPClassifier
 
 def main_pipeline():
     webcam = None

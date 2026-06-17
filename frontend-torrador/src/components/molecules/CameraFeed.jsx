@@ -4,7 +4,6 @@ export const CameraFeed = () => {
   return (
     <div className="flex flex-col bg-[#292524] rounded-3xl shadow-xl border border-stone-800 overflow-hidden w-full relative group">
       
-      {/* Overlay com informações (Mantido) */}
       <div className="absolute top-4 left-4 right-4 flex justify-between items-center z-10">
         <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
@@ -15,17 +14,14 @@ export const CameraFeed = () => {
         </span>
       </div>
 
-      {/* Tela de Vídeo */}
       <div className="aspect-video bg-[#151312] relative overflow-hidden">
         
-        {/* A TAG MÁGICA: Puxa o vídeo ao vivo da API */}
         <img 
-          src="http://127.0.0.1:8000/video_feed" 
-          alt="Feed do Torrador" 
-          className="w-full h-full object-cover"
-        />
+  src="http://localhost:8000/video_feed" 
+  alt="Feed do Torrador" 
+  className="w-full h-full object-cover"
+/>
         
-        {/* Mira de foco estilizada */}
         <div className="absolute top-10 left-10 w-8 h-8 border-t-2 border-l-2 border-amber-500/50"></div>
         <div className="absolute top-10 right-10 w-8 h-8 border-t-2 border-r-2 border-amber-500/50"></div>
         <div className="absolute bottom-10 left-10 w-8 h-8 border-b-2 border-l-2 border-amber-500/50"></div>

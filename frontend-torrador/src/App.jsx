@@ -1,15 +1,18 @@
-import { useState ,useEffect} from 'react';
+import { useState, useEffect } from 'react';
 import { AgtronBadge } from './components/atoms/AgtronBadge';
 import { CameraFeed } from './components/molecules/CameraFeed';
 
 function App() {
   const [dadosTorra, setDadosTorra] = useState({
-    score: 44.26,
+    score: 0,
     stage: "Aguardando...",
-    uniformidade: 94
+    uniformidade: 0
   });
   const [isOnline, setIsOnline] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  const [modoContinuo, setModoContinuo] = useState(false);
+
   useEffect(() => {
     const verificarConexao = async () => {
       try {
@@ -20,38 +23,69 @@ function App() {
           setIsOnline(false);
         }
       } catch (erro) {
-        // Se der erro (ex: servidor desligado), fica offline
         setIsOnline(false); 
       }
     };
 
-    // Testa na hora que abre a página
     verificarConexao();
-    
-    // Configura o loop infinito para testar a cada 3000ms (3 segundos)
     const intervalo = setInterval(verificarConexao, 3000);
-    
-    // Limpeza da memória caso feche a página
     return () => clearInterval(intervalo);
   }, []);
-  const capturarEAnalisar = async () => {
-    setIsProcessing(true); 
+
+  useEffect(() => {
+    let intervalo;
+    if (modoContinuo) {
+      intervalo = setInterval(() => {
+        capturarEAnalisar(true);
+      }, 2000);
+    }
+    return () => clearInterval(intervalo);
+  }, [modoContinuo]);
+
+
+  const capturarEAnalisar = async (isAuto = false) => {
+    if (!isAuto) setIsProcessing(true); 
     
     try {
       const resposta = await fetch('http://127.0.0.1:8000/analisar');
       const dados = await resposta.json();
       
-      setDadosTorra({
-        score: dados.score,
-        stage: dados.stage,
-        uniformidade: dados.uniformidade
+    
+      if (dados.score === 0) {
+        setDadosTorra({ score: 0, stage: "Sem grãos", uniformidade: 0 });
+        if (!isAuto) setIsProcessing(false);
+        return;
+      }
+      const tolerancia_agtron = 4.0;
+      
+      setDadosTorra(estadoAtual => {
+        if (Math.abs(dados.score - estadoAtual.score) > tolerancia_agtron || estadoAtual.score === 0) {
+          return {
+            score: dados.score,
+            stage: dados.stage,
+            uniformidade: dados.uniformidade
+          };
+        }
+        return estadoAtual;
       });
+
     } catch (erro) {
       console.error("Erro ao contactar a IA:", erro);
-      alert("Não foi possível contactar o servidor Python. Ele está a rodar?");
+      if (!modoContinuo) {
+        alert("Não foi possível contactar o servidor Python. Ele está a rodar?");
+      }
     }
     
-    setIsProcessing(false); 
+    if (!isAuto) setIsProcessing(false); 
+  };
+
+  const handleCalibrarSensor = async () => {
+    try {
+      await fetch("http://127.0.0.1:8000/calibrar");
+      console.log("Hardware resetado!");
+    } catch (error) {
+      console.error("Erro ao resetar hardware:", error);
+    }
   };
 
   return (
@@ -118,18 +152,36 @@ function App() {
           <div className="bg-[#292524] rounded-3xl p-6 border border-stone-800 shadow-xl mt-2">
             <h3 className="text-stone-400 text-sm font-semibold mb-4 uppercase tracking-wider">Comandos</h3>
             <div className="flex flex-col gap-3">
+              
+            
               <button 
-                onClick={capturarEAnalisar}
-                disabled={isProcessing}
-                className={`w-full flex justify-center py-3.5 px-4 rounded-2xl text-stone-900 font-bold transition-all shadow-lg active:scale-95 ${
-                  isProcessing ? 'bg-amber-500/50 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-400'
+                onClick={() => {
+                  setModoContinuo(!modoContinuo);
+                  if (!modoContinuo) capturarEAnalisar(); 
+                }}
+                disabled={isProcessing && !modoContinuo}
+                className={`w-full flex justify-center py-3.5 px-4 rounded-2xl font-bold transition-all shadow-lg active:scale-95 ${
+                  modoContinuo 
+                    ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse' 
+                    : isProcessing 
+                      ? 'bg-amber-500/50 text-stone-900 cursor-not-allowed' 
+                      : 'bg-amber-500 text-stone-900 hover:bg-amber-400'
                 }`}
               >
-                {isProcessing ? 'A Processar...' : 'Extrair Amostra Agora'}
+                {modoContinuo 
+                  ? '⏹ Parar Análise Contínua' 
+                  : isProcessing 
+                    ? 'A Processar...' 
+                    : '▶️ Iniciar Análise em Tempo Real'}
               </button>
-              <button className="w-full flex justify-center py-3.5 px-4 rounded-2xl text-stone-300 bg-transparent border border-stone-600 hover:bg-stone-800 hover:text-white font-semibold transition-all active:scale-95">
+
+              <button 
+                onClick={handleCalibrarSensor}
+                className="w-full flex justify-center py-3.5 px-4 rounded-2xl text-stone-300 bg-transparent border border-stone-600 hover:bg-stone-800 hover:text-white font-semibold transition-all active:scale-95"
+              >
                 Calibrar Sensor
               </button>
+
             </div>
           </div>
 

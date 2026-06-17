@@ -4,15 +4,13 @@ import torch
 import clip
 import numpy as np
 from PIL import Image
-from sklearn.neighbors import KNeighborsClassifier # <-- A NOVA MAGIA AQUI
+from sklearn.neighbors import KNeighborsClassifier #
 import joblib
 
 def treinar():
     print("A iniciar o treino do Cérebro de Cores (KNN)...")
     device = "cpu"
     model, preprocess = clip.load('ViT-B/32', device)
-    
-    # O caminho que estava a funcionar para si
     pasta_base = "dataset/cnn" 
     
     features_lista = []
@@ -36,7 +34,6 @@ def treinar():
             if imagem_cv2 is None:
                 continue
                 
-            # Sem cortes! A IA vai olhar para a cor do grão inteiro
             grao_rgb = cv2.cvtColor(imagem_cv2, cv2.COLOR_BGR2RGB)
             imagem_pil = Image.fromarray(grao_rgb)
             image_input = preprocess(imagem_pil).unsqueeze(0).to(device)
@@ -56,8 +53,6 @@ def treinar():
     print("\nExtração concluída! A treinar o modelo KNN...")
     X = np.array(features_lista)
     y = np.array(labels_lista)
-    
-    # Treina o KNN (O peso 'distance' dá 100% de confiança se a cor bater certo!)
     classifier = KNeighborsClassifier(n_neighbors=5, weights='distance')
     classifier.fit(X, y)
     

@@ -15,7 +15,6 @@ class YOLOObjectDetector:
         if not os.path.exists(self.model_path):
             raise FileNotFoundError(f"Modelo YOLO não encontrado em {self.model_path}.")
             
-        # Carrega o modelo .pt diretamente com a classe YOLO
         try:
             self.model = YOLO(self.model_path)
             self.model.to('cpu')
@@ -31,17 +30,15 @@ class YOLOObjectDetector:
         O pós-processamento é feito pela própria biblioteca.
         """
 
-        # Realiza a predição. A biblioteca cuida do pré-processamento.
         results = self.model.predict(source=frame_original, conf=self.confidence_threshold, verbose=False)
         
-        # O resultado já vem processado!
         result = results[0]
         
-        frame_com_detecoes = result.plot() # 'plot()' já desenha as caixas e labels!
+        frame_com_detecoes = result.plot() 
         imagens_recortadas = []
 
         for box in result.boxes:
-            # Extrai coordenadas no formato (x1, y1, x2, y2)
+           
             coords = box.xyxy[0].cpu().numpy().astype(int)
             x1, y1, x2, y2 = coords
             

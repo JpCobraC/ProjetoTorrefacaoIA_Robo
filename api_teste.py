@@ -1,76 +1,158 @@
 import cv2
 import threading
+import time
+from collections import Counter
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-import validar_sistema
+from validar_sistema import analisar_para_api
+from fastapi.responses import StreamingResponse
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 1. Liga a câmara (0 é a webcam padrão. Se falhar, tente 1 ou 2)
-camera = cv2.VideoCapture(0)
-
-# Variável global para guardar a "fotocópia" e um "Cadeado" (Lock) de segurança
 ultimo_frame = None
 lock_frame = threading.Lock()
+sistema_rodando = True
+comando_calibrar = False
+camera = None
 
-def gerar_frames():
-    """Loop infinito que lê a câmara e gera o vídeo"""
-    global ultimo_frame
+def descobrir_e_ligar_camera():
+    """Tenta ligar a câmera externa (geralmente índice 0, 2 ou 4)"""
+    indices_para_testar = [0, 2, 4, 1, 3]
+    for indice in indices_para_testar:
+        print(f"[HARDWARE] Tentando abrir /dev/video{indice}...")
+        cam = cv2.VideoCapture(indice, cv2.CAP_V4L2)
+        if cam.isOpened():
+            sucesso, _ = cam.read()
+            if sucesso:
+                print(f"[SUCESSO] Câmera ativada no índice {indice}!")
+                return cam
+            cam.release()
+    return None
+
+def thread_captura_camera():
+    """Mantém a câmera lendo frames e escuta comandos de reset"""
+    global ultimo_frame, sistema_rodando, camera, comando_calibrar
+    print("[HARDWARE] Thread de captura iniciada.")
     
-    while True:
-        sucesso, frame = camera.read()
-        if not sucesso:
-            break
+    while sistema_rodando:
+        
+        if comando_calibrar:
+            print("[HARDWARE] Reiniciando e limpando o sensor da câmera...")
+            if camera is not None:
+                camera.release()
+            camera = descobrir_e_ligar_camera()
+            with lock_frame:
+                ultimo_frame = None
+            comando_calibrar = False
+            continue
+
+        if camera is None:
+            camera = descobrir_e_ligar_camera()
+            if camera is None:
+                time.sleep(2.0)
+                continue
+
+        try:
+            sucesso, frame = camera.read()
+            if sucesso and frame is not None:
+                with lock_frame:
+                    ultimo_frame = frame.copy()
+            else:
+                if camera:
+                    camera.release()
+                camera = None
+                time.sleep(1.0)
+        except Exception as e:
+            print(f"[ERRO CRÍTICO] Falha na leitura: {e}")
+            camera = None
+            time.sleep(1.0)
             
-        # Guarda uma cópia segura do frame para quando o botão for clicado
+        time.sleep(0.03)
+
+threading.Thread(target=thread_captura_camera, daemon=True).start()
+
+def gerar_frames_video():
+    """Gerador contínuo de frames para o React (MJPEG Stream)"""
+    global ultimo_frame, lock_frame
+    while True:
         with lock_frame:
-            ultimo_frame = frame.copy()
-
-        # Codifica o frame para formato de imagem JPEG
-        _, buffer = cv2.imencode('.jpg', frame)
-        frame_bytes = buffer.tobytes()
-
-        # Envia a imagem empacotada no formato de vídeo contínuo (MJPEG)
+            if ultimo_frame is None:
+                time.sleep(0.1)
+                continue
+            sucesso, buffer = cv2.imencode('.jpg', ultimo_frame)
+            if not sucesso:
+                continue
+            frame_bytes = buffer.tobytes()
+        
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        
+        time.sleep(0.03) 
 
 @app.get("/video_feed")
 def video_feed():
-    """Rota que o React usa na tag <img> para ver o vídeo ao vivo"""
-    return StreamingResponse(gerar_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
-
-@app.get("/analisar")
-def rodar_analise():
-    """Rota que o React chama quando clica no botão"""
-    global ultimo_frame
-    
-    print("Capturando frame exato para análise...")
-    
-    # Pega o frame atual protegido pelo cadeado
-    with lock_frame:
-        if ultimo_frame is None:
-            return {"score": 0.0, "stage": "Câmara desligada", "uniformidade": 0}
-        frame_para_analise = ultimo_frame.copy()
-    
-    # Envia a fotocópia para a Inteligência Artificial
-    agtron, classe, desvio = validar_sistema.analisar_para_api(frame_para_analise)
-    
-    uniformidade_visual = max(0, 100 - int(desvio * 3))
-
-    return {
-        "score": float(agtron),
-        "stage": str(classe),
-        "uniformidade": uniformidade_visual
-    }
-
+    """Rota consumida pelo <CameraFeed /> do React"""
+    return StreamingResponse(gerar_frames_video(), media_type="multipart/x-mixed-replace; boundary=frame")
 @app.get("/status")
 def checar_status():
     return {"status": "online"}
+
+@app.get("/calibrar")
+def acionar_calibracao():
+    """Rota disparada pelo botão 'Calibrar Sensor'"""
+    global comando_calibrar
+    comando_calibrar = True
+    return {"status": "sucesso", "mensagem": "Hardware resetado"}
+
+@app.get("/analisar")
+def rodar_analise():
+    """Rota de análise estabilizada com rajada de 3 frames"""
+    global ultimo_frame, lock_frame
+    
+    resultados_agtron = []
+    classes_detectadas = []
+    desvios_detectados = []
+    
+    print("\n[IA] Iniciando captura de rajada (3 frames)...")
+    
+    for i in range(3):
+        with lock_frame:
+            if ultimo_frame is None:
+                time.sleep(0.15)
+                continue
+            frame_para_analise = ultimo_frame.copy()
+        
+        agtron, classe, desvio = analisar_para_api(frame_para_analise)
+        
+        if agtron > 0:
+            resultados_agtron.append(agtron)
+            classes_detectadas.append(classe)
+            desvios_detectados.append(desvio)
+            print(f"   -> Frame {i+1}: Agtron {agtron} | Classe: {classe}")
+            
+        time.sleep(0.15)
+        
+    if not resultados_agtron:
+        print("[IA] FALHA: Nenhum grão validado.")
+        return {"score": 0.0, "stage": "Sem grãos", "uniformidade": 0}
+        
+    media_agtron = round(sum(resultados_agtron) / len(resultados_agtron), 2)
+    classe_final = Counter(classes_detectadas).most_common(1)[0][0]
+    media_desvio = sum(desvios_detectados) / len(desvios_detectados)
+    uniformidade_visual = max(0, 100 - int(media_desvio * 3))
+    
+    print(f"[IA] FINAL ESTABILIZADO: Score {media_agtron} | Stage: {classe_final}\n")
+    
+    return {
+        "score": float(media_agtron), 
+        "stage": str(classe_final), 
+        "uniformidade": uniformidade_visual
+    }
