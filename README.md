@@ -1,4 +1,29 @@
 
-# Detecção e classificação de níveis de torra de café utilizando YOLO e CNN's seguindo a escala AGTRON
+# Automação de torra de café — estimativa de Agtron via visão computacional
 
-### Em desenvolvimento
+Sistema que estima o nível de torra (escala Agtron: Cru/Clara/Media/Escura) a partir
+de uma mira (ROI) fixa apontada para o grão, convertendo a imagem para o espaço de cor
+CIELAB e usando um modelo de Regressão Linear (scikit-learn) treinado com dados reais
+de bancada para prever o valor Agtron a partir de L, a, b.
+
+## Componentes
+
+- **`api_teste.py`** — servidor FastAPI (porta 8000) que expõe a rota `/analisar`,
+  consumida pelo frontend React em `frontend-torrador/`.
+- **`validar_sistema.py`** — pipeline de análise (ROI + CIELAB + `modelo_agtron_linear_interpolado.pkl`)
+  usado pela API.
+- **`artisan_bridge.py`** — ponte para integração com o software [Artisan](https://artisan-scope.org/)
+  (dispositivo tipo "Program"), usando o mesmo modelo e ROI do pipeline principal.
+- **`coletar_dataset_real.py`** / **`gerar_dataset_interpolado.py`** / **`treinar_novo.py`** —
+  fluxo de coleta de dados de bancada, geração do dataset interpolado e treino dos modelos.
+- **`analise_torra.py`** — ferramenta de monitoramento visual standalone (exibe a ROI e o
+  Agtron predito em tempo real sobre o vídeo).
+
+## Rodando
+
+```bash
+pip install -r requirements.txt
+python3 -m uvicorn api_teste:app --host 0.0.0.0 --port 8000 --reload
+```
+
+O frontend em `frontend-torrador/` consome a API em `http://localhost:8000`.

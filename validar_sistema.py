@@ -1,81 +1,88 @@
 import os
 import sys
+import pickle
 import cv2
 import numpy as np
-from collections import Counter
-import re
 
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
 DIRETORIO_ATUAL = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(DIRETORIO_ATUAL)
 
-from processamento_imagem.preprocess import preprocessar_grao_para_clip
-from yolo.detectar_graos import YOLOObjectDetector
-from clip_.clip_classifier import CLIPClassifier
+from config import X_INICIAL, Y_INICIAL, X_FINAL, Y_FINAL
 
-yolo_detector = None
-cnn_classifier = None
+# ATENCAO: este e o 'modelo_agtron_linear_interpolado.pkl' (gerado por
+# treinar_novo.py --interpolado), treinado com TODOS os frames do
+# dataset_interpolado.csv -- cujos alvos de Agtron sao ESTIMATIVAS por
+# interpolacao temporal linear entre as marcacoes manuais de fase, nao
+# medicoes reais de Agtron. Nao confundir com o 'modelo_agtron_linear.pkl'
+# original, treinado apenas com os 4 pontos reais de calibracao (ver
+# gerar_dataset_interpolado.py e treinar_novo.py para o historico completo).
+CAMINHO_MODELO = os.path.join(DIRETORIO_ATUAL, 'modelo_agtron_linear_interpolado.pkl')
 
-print("[IA] Inicializando pesos do YOLOv8 e CLIP...")
+modelo_agtron = None
+
+print("[IA] Carregando modelo de regressao linear (Agtron via CIELAB)...")
 try:
-    yolo_detector = YOLOObjectDetector()
-    cnn_classifier = CLIPClassifier()
-    print("[IA] Modelos carregados com sucesso!")
+    with open(CAMINHO_MODELO, 'rb') as f:
+        modelo_agtron = pickle.load(f)
+    print("[IA] Modelo carregado com sucesso!")
 except Exception as e:
-    print(f"[ERRO CRÍTICO] Falha ao carregar modelos: {e}")
+    print(f"[ERRO CRÍTICO] Falha ao carregar '{CAMINHO_MODELO}': {e}")
 
-def analisar_distribuicao_torra(lista_classificacoes):
-    if not lista_classificacoes:
-        return {"classe_dominante": "N/A", "media_agtron": 0.0, "desvio_padrao": 0.0}
-    
-    valores_numericos = [int(n) for c in lista_classificacoes for n in re.findall(r'\d+', c)]
-    classes_validas = [c for c in lista_classificacoes if "incerto" not in c and "erro" not in c]
+# analisar_distribuicao_torra foi removida: ela dependia de rotulos numericos
+# (ex: "25", "35"...) vindos do CLIP antigo, extraidos via regex, para agregar
+# a classificacao de varios graos individuais. No pipeline atual nao ha mais
+# graos segmentados -- cada chamada a analisar_para_api ja analisa a ROI
+# inteira e devolve (agtron, classe, desvio) de um unico frame. A agregacao
+# da rajada de 3 frames e feita diretamente em api_teste.py.
 
-    if not valores_numericos:
-        return {"classe_dominante": "N/A", "media_agtron": 0.0, "desvio_padrao": 0.0}
-    
-    contagem = Counter(classes_validas)
-    classe_dominante = contagem.most_common(1)[0][0] if contagem else "N/A"
-    
-    return {
-        "classe_dominante": classe_dominante,
-        "media_agtron": round(np.mean(valores_numericos), 2),
-        "desvio_padrao": round(np.std(valores_numericos), 2)
-    }
+
+def classificar_fase(valor_agtron):
+    """Mapeia o Agtron predito para o rotulo de fase da torra, usando as faixas
+    aproximadas dos dados reais coletados (Cru~95, Clara~75, Media~55, Escura~35)."""
+    if valor_agtron >= 85:
+        return "Cru"
+    elif valor_agtron >= 65:
+        return "Clara"
+    elif valor_agtron >= 45:
+        return "Media"
+    else:
+        return "Escura"
+
 
 def analisar_para_api(frame_ao_vivo):
-    global yolo_detector, cnn_classifier
+    global modelo_agtron
     try:
-        if frame_ao_vivo is None or yolo_detector is None or cnn_classifier is None:
+        if modelo_agtron is None:
             return 0.0, "Erro IA", 0.0
-        
-        frame_desenhado, graos_recortados = yolo_detector.detectar_e_recortar(frame_ao_vivo)
-        
-        if frame_desenhado is not None:
-            caminho_debug = os.path.join(DIRETORIO_ATUAL, "debug_yolo_visao.jpg")
-            cv2.imwrite(caminho_debug, frame_desenhado)
-        
-        pasta_auditoria = os.path.join(DIRETORIO_ATUAL, "auditoria_clip")
-        os.makedirs(pasta_auditoria, exist_ok=True)
-        
-        for arquivo in os.listdir(pasta_auditoria):
-            caminho_arquivo = os.path.join(pasta_auditoria, arquivo)
-            if os.path.isfile(caminho_arquivo):
-                os.remove(caminho_arquivo)
 
-        classificacoes_cnn = []
-        if graos_recortados:
-            for idx, grao_crop in enumerate(graos_recortados):
-                classificacao, _ = cnn_classifier.classificar(grao_crop)
-                classificacoes_cnn.append(classificacao)
-                
-                nome_limpo = str(classificacao).replace("/", "_").replace(" ", "_")
-                nome_foto = f"grao_{idx}_Veredito_{nome_limpo}.jpg"
-                cv2.imwrite(os.path.join(pasta_auditoria, nome_foto), grao_crop)
-                
-        estatisticas = analisar_distribuicao_torra(classificacoes_cnn)
-        return estatisticas['media_agtron'], estatisticas['classe_dominante'], estatisticas['desvio_padrao']
-        
+        if frame_ao_vivo is None:
+            return 0.0, "Sem grãos", 0.0
+
+        # Aplica a mesma mira (ROI) fixa usada em analise_torra.py
+        zona_do_cafe = frame_ao_vivo[Y_INICIAL:Y_FINAL, X_INICIAL:X_FINAL]
+        if zona_do_cafe is None or zona_do_cafe.size == 0:
+            return 0.0, "Sem grãos", 0.0
+
+        # Matematica da cor (espaco CIELAB), igual a analise_torra.py
+        lab_frame = cv2.cvtColor(zona_do_cafe, cv2.COLOR_BGR2LAB)
+        l_channel, a_channel, b_channel = cv2.split(lab_frame)
+
+        l_mean = float(np.mean(l_channel))
+        a_mean = float(np.mean(a_channel))
+        b_mean = float(np.mean(b_channel))
+
+        dados_entrada = np.array([[l_mean, a_mean, b_mean]])
+        agtron_predito = float(modelo_agtron.predict(dados_entrada)[0])
+
+        classe = classificar_fase(agtron_predito)
+
+        # Sem graos individuais para comparar entre si, o desvio padrao de L
+        # dentro da propria ROI serve de proxy para a uniformidade visual do lote
+        desvio = float(np.std(l_channel))
+
+        return round(agtron_predito, 2), classe, round(desvio, 2)
+
     except Exception as e:
-        print(f"[ERRO] Falha na esteira de IA: {e}")
+        print(f"[ERRO] Falha na analise da ROI/CIELAB: {e}")
         return 0.0, "Erro Interno", 0.0
