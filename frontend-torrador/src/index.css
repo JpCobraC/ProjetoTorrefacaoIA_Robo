@@ -1,3 +1,13 @@
+/* Fontes do projeto: Fraunces (serifada, com carater — usada em titulos e
+   numeros grandes, remetendo a rotulo de cafe artesanal) e Inter (sans-serif
+   limpa, usada no corpo do texto). O @import precisa vir antes de qualquer
+   outra regra (inclusive @tailwind) para ser valido na folha de estilo. */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+body {
+  font-family: 'Inter', sans-serif;
+}

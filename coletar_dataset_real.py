@@ -4,15 +4,14 @@ import csv
 import os
 
 # --- MIRA DE PRECISAO (ROI) ---
-# Mesmos valores usados em analise_torra.py -- edite os dois arquivos juntos
-# ao ajustar a mira para evitar pegar a parede metalica da pipoqueira.
-X_INICIAL = 260
-Y_INICIAL = 70
-X_FINAL = 420
-Y_FINAL = 220
+# Migrado para ler de config.py (fonte unica da mira) em vez de duplicar os
+# 4 numeros aqui -- assim, calibrar a mira em config.py (ver calibrar_temp.py)
+# já vale automaticamente pra esta coleta. analise_torra.py ainda tem sua
+# copia local; sincronize-o manualmente se for usa-lo com a mesma mira.
+from config import X_INICIAL, Y_INICIAL, X_FINAL, Y_FINAL
 
-VIDEO_PATH = 'torra.mp4'
-CSV_SAIDA = 'dataset_real.csv'
+VIDEO_PATH = 'torra_v2.mp4'
+CSV_SAIDA = 'dataset_real_v2.csv'
 
 # Teclas de marcacao manual da fase da torra
 FASES = {

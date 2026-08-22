@@ -1,184 +1,113 @@
-.counter {
-  font-size: 16px;
-  padding: 5px 10px;
-  border-radius: 5px;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border: 2px solid transparent;
-  transition: border-color 0.3s;
-  margin-bottom: 24px;
+/*
+ * Paleta "TorrefacaoIA" — inspirada em rotulos de embalagem de cafe artesanal
+ * (do dourado do grao cru ao marrom quase preto da torra escura), no lugar
+ * do dark+ambar generico usado antes. Definida aqui como custom properties
+ * para ser referenciada nas classes Tailwind via bg-[var(--cor-x)] etc.
+ */
+:root {
+  --cor-fundo: #1B140F;
+  --cor-superficie: #2A2019;
+  --cor-superficie-clara: #362A1F;
+  --cor-cru: #C9A96E;
+  --cor-torrada: #8B5A2B;
+  --cor-escura: #3D2817;
+  --cor-texto: #F0E6D6;
+  --cor-texto-secundario: #A8977E;
+  --cor-alerta: #C1440E;
+  --cor-sucesso: #6B8E4E;
 
-  &:hover {
-    border-color: var(--accent-border);
+  /* Variantes translucidas das cores de acento, para badges/icones/pilulas.
+     O modificador de opacidade do Tailwind (bg-[var(--x)]/10) nao funciona
+     de forma confiavel sobre custom properties em hex, entao pre-calculamos
+     as versoes com alpha aqui mesmo. */
+  --cor-torrada-10: rgba(139, 90, 43, 0.14);
+  --cor-torrada-20: rgba(139, 90, 43, 0.28);
+  --cor-sucesso-10: rgba(107, 142, 78, 0.14);
+  --cor-sucesso-20: rgba(107, 142, 78, 0.3);
+  --cor-alerta-10: rgba(193, 68, 14, 0.14);
+  --cor-alerta-20: rgba(193, 68, 14, 0.32);
+}
+
+/* Textura sutil de "papel kraft" no fundo da pagina: ruido gerado via SVG
+   (feTurbulence) com a opacidade ja embutida no proprio filtro (feColorMatrix
+   reduz o alpha de saida para ~4.5%), em vez de baixar o opacity do elemento
+   -- assim o texto por cima nao e afetado. */
+.textura-fundo {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.045 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 180px 180px;
+}
+
+/* Sombra "cafe" (marrom escuro, nao preto puro) para os cards principais,
+   com leve elevacao extra no hover para dar sensacao de profundidade sem
+   parecer flutuando. */
+.card-torra {
+  box-shadow: 0 10px 28px -12px rgba(45, 26, 14, 0.5), 0 4px 10px -4px rgba(45, 26, 14, 0.35);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-torra:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px -12px rgba(45, 26, 14, 0.6), 0 6px 16px -6px rgba(45, 26, 14, 0.4);
+}
+
+/* Entrada orquestrada dos cards principais ao carregar a pagina: fade-in +
+   leve slide-up, com stagger aplicado via animation-delay inline em cada
+   card (ver App.jsx / CameraFeed.jsx / MedidorTorra.jsx / CurvaTorra.jsx). */
+@keyframes entrada-card {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
-  &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-.hero {
-  position: relative;
+.entrada-card {
+  animation: entrada-card 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
 
-  .base,
-  .framework,
-  .vite {
-    inset-inline: 0;
-    margin: 0 auto;
+@media (prefers-reduced-motion: reduce) {
+  .entrada-card {
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
 
-  .base {
-    width: 170px;
-    position: relative;
-    z-index: 0;
+  .card-torra {
+    transition: box-shadow 0.25s ease;
   }
 
-  .framework,
-  .vite {
-    position: absolute;
-  }
-
-  .framework {
-    z-index: 1;
-    top: 34px;
-    height: 28px;
-    transform: perspective(2000px) rotateZ(300deg) rotateX(44deg) rotateY(39deg)
-      scale(1.4);
-  }
-
-  .vite {
-    z-index: 0;
-    top: 107px;
-    height: 26px;
-    width: auto;
-    transform: perspective(2000px) rotateZ(300deg) rotateX(40deg) rotateY(39deg)
-      scale(0.8);
+  .card-torra:hover {
+    transform: none;
   }
 }
 
-#center {
-  display: flex;
-  flex-direction: column;
-  gap: 25px;
-  place-content: center;
-  place-items: center;
-  flex-grow: 1;
-
-  @media (max-width: 1024px) {
-    padding: 32px 20px 24px;
-    gap: 18px;
+/* Halo pulsante sutil no ultimo ponto da Curva da Torra (CurvaTorra.jsx),
+   marcando a leitura mais recente como "ao vivo". Anima os atributos SVG
+   'r' e opacity diretamente -- suportado em todos os browsers modernos. */
+@keyframes pulso-ponto-vivo {
+  0% {
+    r: 8;
+    opacity: 0.35;
+  }
+  70%,
+  100% {
+    r: 15;
+    opacity: 0;
   }
 }
 
-#next-steps {
-  display: flex;
-  border-top: 1px solid var(--border);
-  text-align: left;
-
-  & > div {
-    flex: 1 1 0;
-    padding: 32px;
-    @media (max-width: 1024px) {
-      padding: 24px 20px;
-    }
-  }
-
-  .icon {
-    margin-bottom: 16px;
-    width: 22px;
-    height: 22px;
-  }
-
-  @media (max-width: 1024px) {
-    flex-direction: column;
-    text-align: center;
-  }
+.ponto-curva-glow {
+  animation: pulso-ponto-vivo 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  transform-origin: center;
 }
 
-#docs {
-  border-right: 1px solid var(--border);
-
-  @media (max-width: 1024px) {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-}
-
-#next-steps ul {
-  list-style: none;
-  padding: 0;
-  display: flex;
-  gap: 8px;
-  margin: 32px 0 0;
-
-  .logo {
-    height: 18px;
-  }
-
-  a {
-    color: var(--text-h);
-    font-size: 16px;
-    border-radius: 6px;
-    background: var(--social-bg);
-    display: flex;
-    padding: 6px 12px;
-    align-items: center;
-    gap: 8px;
-    text-decoration: none;
-    transition: box-shadow 0.3s;
-
-    &:hover {
-      box-shadow: var(--shadow);
-    }
-    .button-icon {
-      height: 18px;
-      width: 18px;
-    }
-  }
-
-  @media (max-width: 1024px) {
-    margin-top: 20px;
-    flex-wrap: wrap;
-    justify-content: center;
-
-    li {
-      flex: 1 1 calc(50% - 8px);
-    }
-
-    a {
-      width: 100%;
-      justify-content: center;
-      box-sizing: border-box;
-    }
-  }
-}
-
-#spacer {
-  height: 88px;
-  border-top: 1px solid var(--border);
-  @media (max-width: 1024px) {
-    height: 48px;
-  }
-}
-
-.ticks {
-  position: relative;
-  width: 100%;
-
-  &::before,
-  &::after {
-    content: '';
-    position: absolute;
-    top: -4.5px;
-    border: 5px solid transparent;
-  }
-
-  &::before {
-    left: 0;
-    border-left-color: var(--border);
-  }
-  &::after {
-    right: 0;
-    border-right-color: var(--border);
+@media (prefers-reduced-motion: reduce) {
+  .ponto-curva-glow {
+    animation: none;
+    opacity: 0.25;
   }
 }

@@ -21,7 +21,7 @@ except Exception as e:
     exit()
 
 # 2. Conectando a fonte de vídeo
-video_path = 'torra.mp4'
+video_path = 'torra_v2.mp4'
 cap = cv2.VideoCapture(video_path)
 
 if not cap.isOpened():

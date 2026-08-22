@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from validar_sistema import analisar_para_api
 from fastapi.responses import StreamingResponse
+import config
 
 app = FastAPI()
 
@@ -24,7 +25,21 @@ comando_calibrar = False
 camera = None
 
 def descobrir_e_ligar_camera():
-    """Tenta ligar a câmera externa (geralmente índice 0, 2 ou 4)"""
+    """Tenta ligar a câmera externa (geralmente índice 0, 2 ou 4).
+
+    Se config.USAR_VIDEO_DE_TESTE estiver ativo, abre o vídeo de bancada
+    (torra.mp4) no lugar da câmera física, simulando uma torra ao vivo --
+    útil para testar o pipeline completo (frontend, gráfico, medidor de
+    torra) sem ter a câmera conectada.
+    """
+    if config.USAR_VIDEO_DE_TESTE:
+        print(f"[MODO TESTE] Usando {config.CAMINHO_VIDEO_TESTE} como câmera simulada")
+        cam = cv2.VideoCapture(config.CAMINHO_VIDEO_TESTE)
+        if cam.isOpened():
+            return cam
+        print(f"[MODO TESTE] Falha ao abrir '{config.CAMINHO_VIDEO_TESTE}'.")
+        return None
+
     indices_para_testar = [0, 2, 4, 1, 3]
     for indice in indices_para_testar:
         print(f"[HARDWARE] Tentando abrir /dev/video{indice}...")
@@ -38,17 +53,25 @@ def descobrir_e_ligar_camera():
     return None
 
 def thread_captura_camera():
-    """Mantém a câmera lendo frames e escuta comandos de reset"""
+    """Mantém a câmera (ou o vídeo de teste) lendo frames e escuta comandos de reset"""
     global ultimo_frame, sistema_rodando, camera, comando_calibrar
     print("[HARDWARE] Thread de captura iniciada.")
-    
+
+    # No modo de teste, o intervalo entre leituras respeita o FPS real do
+    # video (calculado assim que a captura abre), em vez do intervalo fixo
+    # usado para a camera fisica -- assim a torra simulada roda na velocidade
+    # real, nao mais rapido que o video de verdade.
+    intervalo_leitura = 0.03
+
     while sistema_rodando:
-        
+
         if comando_calibrar:
             print("[HARDWARE] Reiniciando e limpando o sensor da câmera...")
             if camera is not None:
                 camera.release()
             camera = descobrir_e_ligar_camera()
+            if camera is not None and config.USAR_VIDEO_DE_TESTE:
+                intervalo_leitura = 1.0 / (camera.get(cv2.CAP_PROP_FPS) or 30)
             with lock_frame:
                 ultimo_frame = None
             comando_calibrar = False
@@ -59,9 +82,19 @@ def thread_captura_camera():
             if camera is None:
                 time.sleep(2.0)
                 continue
+            if config.USAR_VIDEO_DE_TESTE:
+                intervalo_leitura = 1.0 / (camera.get(cv2.CAP_PROP_FPS) or 30)
 
         try:
             sucesso, frame = camera.read()
+
+            # O video de teste tem fim (a camera fisica nao) -- ao chegar no
+            # ultimo frame, volta para o inicio e continua em loop, para dar
+            # para testar continuamente sem reiniciar o servidor.
+            if not sucesso and config.USAR_VIDEO_DE_TESTE:
+                camera.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                sucesso, frame = camera.read()
+
             if sucesso and frame is not None:
                 with lock_frame:
                     ultimo_frame = frame.copy()
@@ -74,8 +107,8 @@ def thread_captura_camera():
             print(f"[ERRO CRÍTICO] Falha na leitura: {e}")
             camera = None
             time.sleep(1.0)
-            
-        time.sleep(0.03)
+
+        time.sleep(intervalo_leitura)
 
 threading.Thread(target=thread_captura_camera, daemon=True).start()
 

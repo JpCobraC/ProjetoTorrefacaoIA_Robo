@@ -10,14 +10,15 @@ sys.path.append(DIRETORIO_ATUAL)
 
 from config import X_INICIAL, Y_INICIAL, X_FINAL, Y_FINAL
 
-# ATENCAO: este e o 'modelo_agtron_linear_interpolado.pkl' (gerado por
-# treinar_novo.py --interpolado), treinado com TODOS os frames do
-# dataset_interpolado.csv -- cujos alvos de Agtron sao ESTIMATIVAS por
-# interpolacao temporal linear entre as marcacoes manuais de fase, nao
-# medicoes reais de Agtron. Nao confundir com o 'modelo_agtron_linear.pkl'
-# original, treinado apenas com os 4 pontos reais de calibracao (ver
+# Modelo treinado exclusivamente com torra_v2.mp4 (melhor estabilizacao de
+# camera), R²=0.9480 -- substituiu o modelo anterior (so torra.mp4, R²=0.8534)
+# em 2026-08-21.
+# ATENCAO: alvos de Agtron sao ESTIMATIVAS por interpolacao temporal linear
+# entre as marcacoes manuais de fase (dataset_interpolado_v2_apenas.csv), nao
+# medicoes reais de Agtron. O modelo anterior 'modelo_agtron_linear_interpolado.pkl'
+# foi mantido no disco como backup para rollback rapido se necessario (ver
 # gerar_dataset_interpolado.py e treinar_novo.py para o historico completo).
-CAMINHO_MODELO = os.path.join(DIRETORIO_ATUAL, 'modelo_agtron_linear_interpolado.pkl')
+CAMINHO_MODELO = os.path.join(DIRETORIO_ATUAL, 'modelo_agtron_linear_v2_producao.pkl')
 
 modelo_agtron = None
 
