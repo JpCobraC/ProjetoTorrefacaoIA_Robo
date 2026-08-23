@@ -88,22 +88,24 @@ def analisar_para_api(frame_ao_vivo):
         dados_entrada = np.array([[l_mean, a_mean, b_mean]])
         agtron_bruto = float(modelo_agtron.predict(dados_entrada)[0])
 
-        # Suavizacao por media movel: com o video de teste (torra_v2.mp4), o
-        # Agtron bruto oscila bastante frame a frame no inicio da leitura
-        # (chega a subir de volta perto de 95 depois de ja ter caido pra 80).
-        # E ruido real de captura -- desfoque de movimento do grao girando no
-        # tambor, ou reflexo momentaneo em frames especificos -- nao erro do
-        # modelo. O jeito certo de resolver na origem seria travar a exposicao
-        # da camera via firmware (frente ainda pendente); ate la, suaviza-se
-        # aqui: cada novo valor bruto entra no buffer persistente do modulo
-        # (buffer_agtron) e o Agtron devolvido e a media das ultimas
-        # TAMANHO_JANELA_SUAVIZACAO leituras, nao o valor isolado deste frame.
+        # Suavizacao por media movel: mesmo com a ROI corrigida (config.py) e o
+        # modelo novo, ainda sobra ruido frame a frame -- um pico isolado bem
+        # visivel (queda a 52, salto a 124) num ponto especifico do video de
+        # teste (torra_v2.mp4), provavelmente desfoque de movimento do grao
+        # girando no tambor ou reflexo momentaneo naquele frame. Isso
+        # COMPLEMENTA a correcao da ROI e a futura trava de exposicao da
+        # camera via firmware (frente ainda pendente) -- nao substitui nenhuma
+        # das duas, so amortece o que ainda passa. Cada novo valor bruto entra
+        # no buffer persistente do modulo (buffer_agtron) e o Agtron devolvido
+        # e a media das ultimas TAMANHO_JANELA_SUAVIZACAO leituras, nao o
+        # valor isolado deste frame.
         buffer_agtron.append(agtron_bruto)
         agtron_predito = sum(buffer_agtron) / len(buffer_agtron)
 
-        # Debug: descomente para comparar bruto vs suavizado lado a lado no
-        # terminal (ver instrucoes de teste com torra_v2.mp4 no historico do PR).
-        # print(f"[DEBUG SUAVIZACAO] bruto={agtron_bruto:.2f} | suavizado={agtron_predito:.2f} | janela={[round(v, 2) for v in buffer_agtron]}")
+        # Debug: bruto vs suavizado a cada chamada, so no terminal (nunca vai
+        # pra resposta da API) -- para acompanhar a diferenca durante os
+        # testes com torra_v2.mp4.
+        print(f"[DEBUG SUAVIZACAO] bruto={agtron_bruto:.2f} | suavizado={agtron_predito:.2f} | janela={[round(v, 2) for v in buffer_agtron]}")
 
         classe = classificar_fase(agtron_predito)
 
