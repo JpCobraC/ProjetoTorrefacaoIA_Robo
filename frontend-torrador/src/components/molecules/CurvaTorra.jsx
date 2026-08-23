@@ -7,6 +7,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  ReferenceLine,
 } from 'recharts';
 
 // Ponto customizado da linha: por padrao nao desenha nada (o grafico fica
@@ -32,7 +33,11 @@ const PontoAoVivo = ({ cx, cy, ehUltimo }) => {
 // objetos de pontos ja existentes, o que e o que o recharts precisa para
 // interpolar a transicao da linha em vez de redesenhar tudo do zero.
 // tempoFormatado: string mm:ss do cronometro da torra atual, exibida junto ao titulo.
-export const CurvaTorra = ({ dados, tempoFormatado }) => {
+// eventos: lista fixa de { id, rotulo } (definida em App.jsx). eventosRegistrados:
+// { [id]: { timestamp, score, stage } } com os eventos ja marcados nesta torra --
+// cada um vira uma linha de referencia vertical no ponto em que foi registrado,
+// no mesmo espirito das marcacoes de evento do Artisan (CHARGE, DRY END, cracks, DROP).
+export const CurvaTorra = ({ dados, tempoFormatado, eventos = [], eventosRegistrados = {} }) => {
   return (
     <div
       className="entrada-card card-torra bg-[var(--cor-superficie)] rounded-3xl p-7 border border-black/20"
@@ -84,6 +89,26 @@ export const CurvaTorra = ({ dados, tempoFormatado }) => {
               formatter={(valor) => [valor.toFixed(1), 'Agtron']}
               labelFormatter={(seg) => `t = ${seg}s`}
             />
+            {eventos.map((evento) => {
+              const registro = eventosRegistrados[evento.id];
+              if (!registro) return null;
+              return (
+                <ReferenceLine
+                  key={evento.id}
+                  x={registro.timestamp}
+                  stroke="var(--cor-cru)"
+                  strokeDasharray="4 4"
+                  strokeOpacity={0.6}
+                  label={{
+                    value: evento.rotulo,
+                    position: 'top',
+                    fill: 'var(--cor-texto-secundario)',
+                    fontSize: 9,
+                    fontFamily: 'monospace',
+                  }}
+                />
+              );
+            })}
             <Line
               type="monotone"
               dataKey="score"

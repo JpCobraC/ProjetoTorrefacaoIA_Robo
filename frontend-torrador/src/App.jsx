@@ -2,14 +2,23 @@ import { useState, useEffect, useRef } from 'react';
 import { CameraFeed } from './components/molecules/CameraFeed';
 import { CurvaTorra } from './components/molecules/CurvaTorra';
 import { MedidorTorra } from './components/molecules/MedidorTorra';
+import { EventosTorra } from './components/molecules/EventosTorra';
+import { formatarTempo } from './utils/tempo';
 import './App.css';
 
-// Converte um total de segundos em "mm:ss" para o cronometro da torra.
-const formatarTempo = (segundosTotais) => {
-  const minutos = Math.floor(segundosTotais / 60).toString().padStart(2, '0');
-  const segundos = Math.floor(segundosTotais % 60).toString().padStart(2, '0');
-  return `${minutos}:${segundos}`;
-};
+// Marcadores de evento da torra, no mesmo padrao usado por torrefadores
+// profissionais (e pelo software Artisan) -- CHARGE (inicio), DRY END (fim da
+// secagem), FC START/END (1o crack) e SC START (2o crack), ate o DROP (fim da
+// torra). Fixa aqui e passada tanto para EventosTorra (botoes de marcacao)
+// quanto para CurvaTorra (linhas de referencia no grafico).
+const EVENTOS_TORRA = [
+  { id: 'charge', rotulo: 'Charge' },
+  { id: 'dry_end', rotulo: 'Dry End' },
+  { id: 'fc_start', rotulo: 'FC Start' },
+  { id: 'fc_end', rotulo: 'FC End' },
+  { id: 'sc_start', rotulo: 'SC Start' },
+  { id: 'drop', rotulo: 'Drop' },
+];
 
 function App() {
   const [dadosTorra, setDadosTorra] = useState({
@@ -28,11 +37,24 @@ function App() {
   // epoch time), ja no formato que o eixo X do grafico espera.
   const [historicoTorra, setHistoricoTorra] = useState([]);
   const [tempoDecorridoSeg, setTempoDecorridoSeg] = useState(0);
+  // Eventos da torra ja marcados: { [id]: { timestamp, score, stage, origem } },
+  // onde origem e 'manual' (clique do usuario) ou 'auto' (detectado a partir da
+  // transicao de fase, ver capturarEAnalisar). Ausencia da chave = evento ainda
+  // nao registrado nesta torra (ver EventosTorra.jsx).
+  const [eventosRegistrados, setEventosRegistrados] = useState({});
   // Guarda o instante (Date.now()) em que a analise continua atual comecou. Fica em
   // ref (nao state) porque precisa de leitura sincrona imediatamente apos ser
   // definido, no mesmo clique que dispara a primeira captura -- um state so
   // atualizaria no proximo render, chegando tarde de mais para aquela chamada.
   const tempoInicioRef = useRef(null);
+  // Ultima fase valida (Cru/Clara/Media/Escura) vista nesta sessao de analise
+  // continua, usada so para detectar as transicoes de auto-marcacao de evento
+  // (ver capturarEAnalisar). Fica em ref pelo mesmo motivo de tempoInicioRef:
+  // o setInterval de captura roda dentro de um closure fixado quando
+  // modoContinuo vira true (efeito com dependencia [modoContinuo]), entao
+  // precisa de leitura/escrita sincrona que nao dependa de um novo render.
+  // null = ainda sem leitura valida nesta sessao (nao dispara nenhuma transicao).
+  const stageAnteriorRef = useRef(null);
 
   useEffect(() => {
     const verificarConexao = async () => {
@@ -120,6 +142,26 @@ function App() {
             uniformidade: dados.uniformidade,
           }
         ]);
+
+        // Auto-marcacao de evento a partir da transicao de fase: so dispara na
+        // PRIMEIRA leitura em que a fase avanca de uma categoria pra proxima
+        // (Cru -> Clara -> Media -> Escura). Comparar sempre contra a fase da
+        // leitura anterior (nao contra "ja passou por Cru alguma vez") garante
+        // um disparo unico mesmo que o classificador oscile entre categorias
+        // depois -- ex.: Clara -> Media -> Clara -> Media so marca FC START na
+        // primeira vez, porque a segunda vez a fase anterior ja e "Media", nao
+        // "Clara". registrarEvento() tem ainda uma segunda trava (nao
+        // sobrescreve evento ja existente), entao mesmo uma oscilacao Cru ->
+        // Clara -> Cru -> Clara nao re-dispara o DRY END.
+        const faseAnterior = stageAnteriorRef.current;
+        if (faseAnterior === 'Cru' && dados.stage === 'Clara') {
+          registrarEvento('dry_end', { timestamp: segundosDecorridos, score: dados.score, stage: dados.stage, origem: 'auto' });
+        } else if (faseAnterior === 'Clara' && dados.stage === 'Media') {
+          registrarEvento('fc_start', { timestamp: segundosDecorridos, score: dados.score, stage: dados.stage, origem: 'auto' });
+        } else if (faseAnterior === 'Media' && dados.stage === 'Escura') {
+          registrarEvento('sc_start', { timestamp: segundosDecorridos, score: dados.score, stage: dados.stage, origem: 'auto' });
+        }
+        stageAnteriorRef.current = dados.stage;
       }
 
     } catch (erro) {
@@ -151,8 +193,59 @@ function App() {
       // sempre comeca com um grafico limpo, representando a nova torra.
       setHistoricoTorra([]);
       setTempoDecorridoSeg(0);
+      stageAnteriorRef.current = null;
       tempoInicioRef.current = Date.now();
+      // CHARGE e o unico evento auto-marcado que nao depende de uma leitura da
+      // API: ele representa o inicio da propria sessao, entao e registrado
+      // aqui, no clique de "Iniciar Análise em Tempo Real", com timestamp 0.
+      setEventosRegistrados({
+        charge: { timestamp: 0, score: dadosTorra.score, stage: dadosTorra.stage, origem: 'auto' },
+      });
       capturarEAnalisar();
+    }
+  };
+
+  // Registra um evento (manual ou automatico) com os dados informados. Trava
+  // central de idempotencia: se o evento ja existe -- veio de um clique manual
+  // anterior OU de uma auto-marcacao -- o registro e ignorado e o estado
+  // anterior e preservado. Decisao (item 6 da tarefa): nao ha popup de
+  // "sobrescrever?"; o clique simplesmente nao tem efeito, porque o botao
+  // correspondente ja fica desabilitado assim que o evento e marcado (ver
+  // EventosTorra.jsx) -- chegar aqui com o evento ja marcado so aconteceria
+  // por uma condicao de corrida (ex.: auto-marcacao no mesmo instante do
+  // clique), e nesse caso a marcacao que chegou primeiro deve prevalecer.
+  const registrarEvento = (idEvento, dadosRegistro) => {
+    setEventosRegistrados(atual => {
+      if (atual[idEvento]) return atual;
+      return { ...atual, [idEvento]: dadosRegistro };
+    });
+  };
+
+  // Clique manual num botao de evento: usa o tempo decorrido e o Agtron/fase
+  // atuais, marcados com origem 'manual' (ver selo "(auto)" em EventosTorra.jsx).
+  const handleRegistrarEvento = (idEvento) => {
+    registrarEvento(idEvento, {
+      timestamp: tempoDecorridoSeg,
+      score: dadosTorra.score,
+      stage: dadosTorra.stage,
+      origem: 'manual',
+    });
+  };
+
+  // Limpa o historico do grafico e os eventos marcados (manuais e
+  // automaticos) para comecar uma nova torra do zero, sem precisar parar e
+  // reiniciar a analise continua. Tambem zera a deteccao de transicao de fase
+  // -- senao a proxima leitura comparada contra a ultima fase da torra
+  // anterior poderia disparar um evento auto na hora errada (ex.: a torra
+  // anterior tinha terminado em "Escura" e a nova comecaria com o grao ainda
+  // "Cru", o que nao e uma transicao Media -> Escura de verdade).
+  const handleReiniciarTorra = () => {
+    setHistoricoTorra([]);
+    setEventosRegistrados({});
+    setTempoDecorridoSeg(0);
+    stageAnteriorRef.current = null;
+    if (modoContinuo) {
+      tempoInicioRef.current = Date.now();
     }
   };
 
@@ -217,9 +310,25 @@ function App() {
 
           {/* 2) Curva da torra ao longo do tempo — card com mais destaque agora
               que os Comandos sairam da coluna (ver CurvaTorra.jsx) */}
-          <CurvaTorra dados={historicoTorra} tempoFormatado={formatarTempo(tempoDecorridoSeg)} />
+          <CurvaTorra
+            dados={historicoTorra}
+            tempoFormatado={formatarTempo(tempoDecorridoSeg)}
+            eventos={EVENTOS_TORRA}
+            eventosRegistrados={eventosRegistrados}
+          />
 
-          {/* 3) Uniformidade do lote */}
+          {/* 3) Eventos da torra — marcacao manual dos pontos-chave (CHARGE,
+              DRY END, cracks, DROP), trazendo o conceito do Artisan para
+              dentro do proprio painel (ver EventosTorra.jsx) */}
+          <EventosTorra
+            eventos={EVENTOS_TORRA}
+            eventosRegistrados={eventosRegistrados}
+            podeRegistrar={modoContinuo}
+            onRegistrarEvento={handleRegistrarEvento}
+            onReiniciarTorra={handleReiniciarTorra}
+          />
+
+          {/* 4) Uniformidade do lote */}
           <div
             className="entrada-card card-torra bg-[var(--cor-superficie)] rounded-3xl p-6 border border-black/20 flex items-center justify-between"
             style={{ animationDelay: '270ms' }}

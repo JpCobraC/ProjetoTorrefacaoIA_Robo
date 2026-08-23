@@ -19,7 +19,7 @@ CAMINHO_VIDEO_TESTE = 'torra_v2.mp4'
 # loop de video e cv2.imshow direto no import). coletar_dataset_real.py ja
 # importa esses 4 valores daqui; analise_torra.py ainda tem essa constante
 # duplicada localmente -- sincronize-a manualmente se for usa-lo com a mesma mira.
-X_INICIAL = 200
-Y_INICIAL = 250
-X_FINAL = 340
-Y_FINAL = 370
+X_INICIAL = 245
+Y_INICIAL = 265
+X_FINAL = 355
+Y_FINAL = 355

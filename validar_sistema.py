@@ -3,6 +3,7 @@ import sys
 import pickle
 import cv2
 import numpy as np
+from collections import deque
 
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
 DIRETORIO_ATUAL = os.path.dirname(os.path.abspath(__file__))
@@ -30,6 +31,17 @@ try:
 except Exception as e:
     print(f"[ERRO CRÍTICO] Falha ao carregar '{CAMINHO_MODELO}': {e}")
 
+# Tamanho da janela da media movel de suavizacao do Agtron (ver buffer_agtron
+# e o comentario dentro de analisar_para_api).
+TAMANHO_JANELA_SUAVIZACAO = 5
+
+# Buffer persistente ENTRE CHAMADAS (nao e reiniciado a cada frame/request),
+# no mesmo espirito do modelo carregado uma unica vez acima no escopo do
+# modulo. Guarda os ultimos TAMANHO_JANELA_SUAVIZACAO valores BRUTOS de
+# Agtron preditos pelo modelo, usados para calcular a media movel devolvida
+# por analisar_para_api.
+buffer_agtron = deque(maxlen=TAMANHO_JANELA_SUAVIZACAO)
+
 # analisar_distribuicao_torra foi removida: ela dependia de rotulos numericos
 # (ex: "25", "35"...) vindos do CLIP antigo, extraidos via regex, para agregar
 # a classificacao de varios graos individuais. No pipeline atual nao ha mais
@@ -52,7 +64,7 @@ def classificar_fase(valor_agtron):
 
 
 def analisar_para_api(frame_ao_vivo):
-    global modelo_agtron
+    global modelo_agtron, buffer_agtron
     try:
         if modelo_agtron is None:
             return 0.0, "Erro IA", 0.0
@@ -74,7 +86,24 @@ def analisar_para_api(frame_ao_vivo):
         b_mean = float(np.mean(b_channel))
 
         dados_entrada = np.array([[l_mean, a_mean, b_mean]])
-        agtron_predito = float(modelo_agtron.predict(dados_entrada)[0])
+        agtron_bruto = float(modelo_agtron.predict(dados_entrada)[0])
+
+        # Suavizacao por media movel: com o video de teste (torra_v2.mp4), o
+        # Agtron bruto oscila bastante frame a frame no inicio da leitura
+        # (chega a subir de volta perto de 95 depois de ja ter caido pra 80).
+        # E ruido real de captura -- desfoque de movimento do grao girando no
+        # tambor, ou reflexo momentaneo em frames especificos -- nao erro do
+        # modelo. O jeito certo de resolver na origem seria travar a exposicao
+        # da camera via firmware (frente ainda pendente); ate la, suaviza-se
+        # aqui: cada novo valor bruto entra no buffer persistente do modulo
+        # (buffer_agtron) e o Agtron devolvido e a media das ultimas
+        # TAMANHO_JANELA_SUAVIZACAO leituras, nao o valor isolado deste frame.
+        buffer_agtron.append(agtron_bruto)
+        agtron_predito = sum(buffer_agtron) / len(buffer_agtron)
+
+        # Debug: descomente para comparar bruto vs suavizado lado a lado no
+        # terminal (ver instrucoes de teste com torra_v2.mp4 no historico do PR).
+        # print(f"[DEBUG SUAVIZACAO] bruto={agtron_bruto:.2f} | suavizado={agtron_predito:.2f} | janela={[round(v, 2) for v in buffer_agtron]}")
 
         classe = classificar_fase(agtron_predito)
 

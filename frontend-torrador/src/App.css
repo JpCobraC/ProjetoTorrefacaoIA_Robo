@@ -16,6 +16,13 @@
   --cor-alerta: #C1440E;
   --cor-sucesso: #6B8E4E;
 
+  /* Dois tons intermediarios so para o gauge de MedidorTorra ter as 4 faixas
+     reais de torra (cru -> quase-preto) em vez do degrade continuo anterior.
+     --cor-gauge-clara interpola cru/torrada; --cor-gauge-escura-profunda vai
+     mais fundo que --cor-escura para fechar o arco num marrom quase preto de verdade. */
+  --cor-gauge-clara: #A67C45;
+  --cor-gauge-escura-profunda: #20120A;
+
   /* Variantes translucidas das cores de acento, para badges/icones/pilulas.
      O modificador de opacidade do Tailwind (bg-[var(--x)]/10) nao funciona
      de forma confiavel sobre custom properties em hex, entao pre-calculamos
@@ -109,5 +116,20 @@
   .ponto-curva-glow {
     animation: none;
     opacity: 0.25;
+  }
+}
+
+/* Ponteiro do gauge semicircular de MedidorTorra.jsx: gira via CSS transform
+   (barato para o Raspberry Pi 3, sem filter/blur). A transicao so dispara
+   quando 'stage'/'score' realmente mudam no estado de App.jsx -- que ja tem
+   uma tolerancia (tolerancia_agtron) para nao atualizar a cada leitura --
+   entao o ponteiro nunca precisa reanimar mais que a cada poucos segundos. */
+.ponteiro-medidor {
+  transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ponteiro-medidor {
+    transition: none;
   }
 }
