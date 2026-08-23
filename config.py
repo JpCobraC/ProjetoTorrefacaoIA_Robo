@@ -6,7 +6,7 @@ CAMERA_ID = 0
 # Quando True, api_teste.py abre CAMINHO_VIDEO_TESTE (em loop, na velocidade
 # real do video) no lugar da camera fisica, simulando uma torra ao vivo para
 # testar o pipeline completo (frontend, grafico, medidor de torra) sem ter a
-# camera conectada. Mesmo padrao de nome ja usado em artisan_bridge.py.
+# camera conectada.
 # IMPORTANTE: deixe False antes da apresentacao real, com a camera conectada.
 USAR_VIDEO_DE_TESTE = True
 # Alinhado com modelo_agtron_linear_v2_producao.pkl (treinado exclusivamente

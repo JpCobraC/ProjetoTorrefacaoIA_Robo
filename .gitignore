@@ -1,6 +1,3 @@
-# Estado local do modo de teste do artisan_bridge.py (posicao do video simulado)
-.posicao_video_teste.txt
-
 # Python
 __pycache__/
 *.py[cod]

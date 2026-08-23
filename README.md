@@ -12,8 +12,6 @@ de bancada para prever o valor Agtron a partir de L, a, b.
   consumida pelo frontend React em `frontend-torrador/`.
 - **`validar_sistema.py`** — pipeline de análise (ROI + CIELAB + `modelo_agtron_linear_interpolado.pkl`)
   usado pela API.
-- **`artisan_bridge.py`** — ponte para integração com o software [Artisan](https://artisan-scope.org/)
-  (dispositivo tipo "Program"), usando o mesmo modelo e ROI do pipeline principal.
 - **`coletar_dataset_real.py`** / **`gerar_dataset_interpolado.py`** / **`treinar_novo.py`** —
   fluxo de coleta de dados de bancada, geração do dataset interpolado e treino dos modelos.
 - **`analise_torra.py`** — ferramenta de monitoramento visual standalone (exibe a ROI e o
