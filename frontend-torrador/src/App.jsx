@@ -4,6 +4,7 @@ import { CurvaTorra } from './components/molecules/CurvaTorra';
 import { MedidorTorra } from './components/molecules/MedidorTorra';
 import { EventosTorra } from './components/molecules/EventosTorra';
 import { formatarTempo } from './utils/tempo';
+import { API_BASE_URL } from './utils/config';
 import './App.css';
 
 // Marcadores de evento da torra, no mesmo padrao usado por torrefadores
@@ -59,7 +60,7 @@ function App() {
   useEffect(() => {
     const verificarConexao = async () => {
       try {
-        const resposta = await fetch('http://127.0.0.1:8000/status');
+        const resposta = await fetch(`${API_BASE_URL}/status`);
         if (resposta.ok) {
           setIsOnline(true);
           setServidorOffline(false);
@@ -106,7 +107,7 @@ function App() {
     if (!isAuto) setIsProcessing(true);
 
     try {
-      const resposta = await fetch('http://127.0.0.1:8000/analisar');
+      const resposta = await fetch(`${API_BASE_URL}/analisar`);
       const dados = await resposta.json();
       setServidorOffline(false);
 
@@ -174,7 +175,7 @@ function App() {
 
   const handleCalibrarSensor = async () => {
     try {
-      await fetch("http://127.0.0.1:8000/calibrar");
+      await fetch(`${API_BASE_URL}/calibrar`);
       console.log("Hardware resetado!");
     } catch (error) {
       console.error("Erro ao resetar hardware:", error);

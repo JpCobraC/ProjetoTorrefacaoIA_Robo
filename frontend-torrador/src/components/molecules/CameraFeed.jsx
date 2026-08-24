@@ -1,4 +1,5 @@
 import React from 'react';
+import { API_BASE_URL } from '../../utils/config';
 
 // Feed de video ao vivo da camera apontada para o cafe. Sem estetica de
 // vigilancia (sem ponto "REC" piscando, sem miras de canto de camera de
@@ -15,7 +16,7 @@ export const CameraFeed = () => {
       <div className="flex-1 min-h-[320px] bg-[#120D09] relative overflow-hidden">
 
         <img
-          src="http://localhost:8000/video_feed"
+          src={`${API_BASE_URL}/video_feed`}
           alt="Feed do Torrador"
           className="w-full h-full object-cover"
         />
