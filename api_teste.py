@@ -46,7 +46,14 @@ def descobrir_e_ligar_camera():
     indices_para_testar = [config.CAMERA_ID] + [i for i in [0, 2, 4, 1, 3] if i != config.CAMERA_ID]
     for indice in indices_para_testar:
         print(f"[HARDWARE] Tentando abrir /dev/video{indice}...")
-        cam = cv2.VideoCapture(indice, cv2.CAP_V4L2)
+        # Abre pelo caminho do dispositivo (nao pelo indice inteiro): o backend
+        # V4L2 do OpenCV, ao abrir por indice, tenta enumerar os /dev/videoN
+        # internamente e falha ("can't open camera by index") quando ha
+        # "buracos" na numeracao -- comum no Raspberry Pi, onde a webcam USB
+        # fica em /dev/video0-1 mas os devices de codec/ISP do proprio Pi
+        # ocupam /dev/video10-31, sem nada entre 2 e 9. Abrir pelo path
+        # ("/dev/videoN") evita essa enumeracao e funciona nos dois casos.
+        cam = cv2.VideoCapture(f"/dev/video{indice}", cv2.CAP_V4L2)
         if cam.isOpened():
             sucesso, _ = cam.read()
             if sucesso:
