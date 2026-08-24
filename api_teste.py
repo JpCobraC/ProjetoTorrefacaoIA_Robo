@@ -1,10 +1,13 @@
 import cv2
+import os
+import re
 import threading
 import time
 from collections import Counter
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from validar_sistema import analisar_para_api
+from pydantic import BaseModel
+from validar_sistema import analisar_para_api, resetar_suavizacao
 from fastapi.responses import StreamingResponse
 import config
 
@@ -40,7 +43,7 @@ def descobrir_e_ligar_camera():
         print(f"[MODO TESTE] Falha ao abrir '{config.CAMINHO_VIDEO_TESTE}'.")
         return None
 
-    indices_para_testar = [0, 2, 4, 1, 3]
+    indices_para_testar = [config.CAMERA_ID] + [i for i in [0, 2, 4, 1, 3] if i != config.CAMERA_ID]
     for indice in indices_para_testar:
         print(f"[HARDWARE] Tentando abrir /dev/video{indice}...")
         cam = cv2.VideoCapture(indice, cv2.CAP_V4L2)
@@ -144,6 +147,70 @@ def acionar_calibracao():
     global comando_calibrar
     comando_calibrar = True
     return {"status": "sucesso", "mensagem": "Hardware resetado"}
+
+
+class ROIAtualizacao(BaseModel):
+    x_inicial: int
+    y_inicial: int
+    x_final: int
+    y_final: int
+
+
+def persistir_roi_no_disco(roi: ROIAtualizacao):
+    """Reescreve as 4 linhas X_INICIAL/Y_INICIAL/X_FINAL/Y_FINAL em config.py
+    com os novos valores, para que o ajuste feito no frontend sobreviva a um
+    restart do servidor (o resto do arquivo, incluindo comentarios, fica
+    intacto)."""
+    caminho_config = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.py')
+    with open(caminho_config, 'r') as f:
+        conteudo = f.read()
+
+    substituicoes = {
+        'X_INICIAL': roi.x_inicial,
+        'Y_INICIAL': roi.y_inicial,
+        'X_FINAL': roi.x_final,
+        'Y_FINAL': roi.y_final,
+    }
+    for nome, valor in substituicoes.items():
+        conteudo = re.sub(rf'^{nome} = \d+$', f'{nome} = {valor}', conteudo, count=1, flags=re.MULTILINE)
+
+    with open(caminho_config, 'w') as f:
+        f.write(conteudo)
+
+
+@app.get("/roi")
+def obter_roi():
+    """Estado atual da mira, consumido pelo overlay do CameraFeed no frontend."""
+    return {
+        "x_inicial": config.X_INICIAL,
+        "y_inicial": config.Y_INICIAL,
+        "x_final": config.X_FINAL,
+        "y_final": config.Y_FINAL,
+        "frame_width": config.FRAME_WIDTH,
+        "frame_height": config.FRAME_HEIGHT,
+    }
+
+
+@app.post("/roi")
+def atualizar_roi(roi: ROIAtualizacao):
+    """Rota disparada ao salvar o ROI ajustado no frontend (arrastar/redimensionar
+    a mira sobre o video ao vivo). Atualiza config em memoria (o pipeline em
+    validar_sistema.py le config.X_INICIAL etc a cada frame, entao o efeito e
+    imediato), persiste em disco e limpa o buffer de suavizacao para nao
+    misturar leituras da mira antiga com a nova."""
+    if not (0 <= roi.x_inicial < roi.x_final <= config.FRAME_WIDTH):
+        return {"status": "erro", "mensagem": "Coordenadas X invalidas"}
+    if not (0 <= roi.y_inicial < roi.y_final <= config.FRAME_HEIGHT):
+        return {"status": "erro", "mensagem": "Coordenadas Y invalidas"}
+
+    config.X_INICIAL = roi.x_inicial
+    config.Y_INICIAL = roi.y_inicial
+    config.X_FINAL = roi.x_final
+    config.Y_FINAL = roi.y_final
+    resetar_suavizacao()
+    persistir_roi_no_disco(roi)
+
+    return {"status": "sucesso", **roi.model_dump()}
 
 @app.get("/analisar")
 def rodar_analise():

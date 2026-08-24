@@ -9,7 +9,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = ''
 DIRETORIO_ATUAL = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(DIRETORIO_ATUAL)
 
-from config import X_INICIAL, Y_INICIAL, X_FINAL, Y_FINAL
+import config
 
 # Modelo treinado exclusivamente com torra_v2.mp4 (melhor estabilizacao de
 # camera), R²=0.9480 -- substituiu o modelo anterior (so torra.mp4, R²=0.8534)
@@ -50,6 +50,14 @@ buffer_agtron = deque(maxlen=TAMANHO_JANELA_SUAVIZACAO)
 # da rajada de 3 frames e feita diretamente em api_teste.py.
 
 
+def resetar_suavizacao():
+    """Limpa o buffer da media movel. Chamada quando a ROI muda (rota /roi em
+    api_teste.py): sem isso, leituras feitas com a mira antiga continuariam
+    pesando na media por ate TAMANHO_JANELA_SUAVIZACAO chamadas depois do
+    ajuste."""
+    buffer_agtron.clear()
+
+
 def classificar_fase(valor_agtron):
     """Mapeia o Agtron predito para o rotulo de fase da torra, usando as faixas
     aproximadas dos dados reais coletados (Cru~95, Clara~75, Media~55, Escura~35)."""
@@ -72,8 +80,11 @@ def analisar_para_api(frame_ao_vivo):
         if frame_ao_vivo is None:
             return 0.0, "Sem grãos", 0.0
 
-        # Aplica a mesma mira (ROI) fixa usada em analise_torra.py
-        zona_do_cafe = frame_ao_vivo[Y_INICIAL:Y_FINAL, X_INICIAL:X_FINAL]
+        # Aplica a mira (ROI) atual de config.py -- lida via modulo (nao
+        # importada por nome) para que ajustes feitos em tempo real pelo
+        # frontend (rota /roi em api_teste.py, que atualiza config.X_INICIAL
+        # etc diretamente) tenham efeito imediato, sem reiniciar o servidor.
+        zona_do_cafe = frame_ao_vivo[config.Y_INICIAL:config.Y_FINAL, config.X_INICIAL:config.X_FINAL]
         if zona_do_cafe is None or zona_do_cafe.size == 0:
             return 0.0, "Sem grãos", 0.0
 

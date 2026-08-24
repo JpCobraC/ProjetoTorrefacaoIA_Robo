@@ -1,6 +1,6 @@
 # No arquivo: config.py
 
-CAMERA_ID = 0
+CAMERA_ID = 2
 
 # --- MODO TESTE (sem camera fisica) ---
 # Quando True, api_teste.py abre CAMINHO_VIDEO_TESTE (em loop, na velocidade
@@ -8,7 +8,7 @@ CAMERA_ID = 0
 # testar o pipeline completo (frontend, grafico, medidor de torra) sem ter a
 # camera conectada.
 # IMPORTANTE: deixe False antes da apresentacao real, com a camera conectada.
-USAR_VIDEO_DE_TESTE = True
+USAR_VIDEO_DE_TESTE = False
 # Alinhado com modelo_agtron_linear_v2_producao.pkl (treinado exclusivamente
 # com torra_v2.mp4): usar torra.mp4 aqui desalinha o modo de teste do modelo
 # em producao e gera predicoes fora da escala Agtron valida.
@@ -23,3 +23,10 @@ X_INICIAL = 245
 Y_INICIAL = 265
 X_FINAL = 355
 Y_FINAL = 355
+
+# Resolucao do frame que a ROI acima referencia (usada para validar limites
+# ao ajustar a mira pelo frontend em /roi e para o overlay do ROI se
+# posicionar corretamente sobre o video). Casa com o formato nativo da
+# camera (ver v4l2-ctl --list-formats-ext).
+FRAME_WIDTH = 640
+FRAME_HEIGHT = 480
