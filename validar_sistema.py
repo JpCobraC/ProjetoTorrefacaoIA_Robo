@@ -1,97 +1,131 @@
 import os
 import sys
+import pickle
 import cv2
-import time
-import shutil
 import numpy as np
-from collections import Counter
-import re
+from collections import deque
 
-sys.path.append(os.getcwd())
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
+DIRETORIO_ATUAL = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(DIRETORIO_ATUAL)
 
+import config
+
+# Modelo treinado exclusivamente com torra_v2.mp4 (melhor estabilizacao de
+# camera), R²=0.9480 -- substituiu o modelo anterior (so torra.mp4, R²=0.8534)
+# em 2026-08-21.
+# ATENCAO: alvos de Agtron sao ESTIMATIVAS por interpolacao temporal linear
+# entre as marcacoes manuais de fase (dataset_interpolado_v2_apenas.csv), nao
+# medicoes reais de Agtron. O modelo anterior 'modelo_agtron_linear_interpolado.pkl'
+# foi mantido no disco como backup para rollback rapido se necessario (ver
+# gerar_dataset_interpolado.py e treinar_novo.py para o historico completo).
+CAMINHO_MODELO = os.path.join(DIRETORIO_ATUAL, 'modelo_agtron_linear_v2_producao.pkl')
+
+modelo_agtron = None
+
+print("[IA] Carregando modelo de regressao linear (Agtron via CIELAB)...")
 try:
-    from processamento_imagem.preprocess import preprocessar_grao_para_cnn
-    from yolo.detectar_graos import YOLOObjectDetector
-    from cnn.classificar_torra import CNNClassifierAPI
-except ModuleNotFoundError as e:
-    print(f"ERRO DE IMPORTAÇÃO: {e}")
-    sys.exit(1)
+    with open(CAMINHO_MODELO, 'rb') as f:
+        modelo_agtron = pickle.load(f)
+    print("[IA] Modelo carregado com sucesso!")
+except Exception as e:
+    print(f"[ERRO CRÍTICO] Falha ao carregar '{CAMINHO_MODELO}': {e}")
 
-def analisar_distribuicao_torra(lista_classificacoes):
-    if not lista_classificacoes:
-        return {"classe_dominante": "N/A", "media_agtron": 0.0, "desvio_padrao": 0.0}
-    
-    valores_numericos = [int(n) for c in lista_classificacoes for n in re.findall(r'\d+', c)]
-    classes_validas = [c for c in lista_classificacoes if "incerto" not in c and "erro" not in c]
+# Tamanho da janela da media movel de suavizacao do Agtron (ver buffer_agtron
+# e o comentario dentro de analisar_para_api).
+TAMANHO_JANELA_SUAVIZACAO = 5
 
-    if not valores_numericos:
-        return {"classe_dominante": "N/A", "media_agtron": 0.0, "desvio_padrao": 0.0}
-    
-    contagem = Counter(classes_validas)
-    classe_dominante = contagem.most_common(1)[0][0] if contagem else "N/A"
-    
-    return {
-        "classe_dominante": classe_dominante,
-        "media_agtron": round(np.mean(valores_numericos), 2),
-        "desvio_padrao": round(np.std(valores_numericos), 2)
-    }
+# Buffer persistente ENTRE CHAMADAS (nao e reiniciado a cada frame/request),
+# no mesmo espirito do modelo carregado uma unica vez acima no escopo do
+# modulo. Guarda os ultimos TAMANHO_JANELA_SUAVIZACAO valores BRUTOS de
+# Agtron preditos pelo modelo, usados para calcular a media movel devolvida
+# por analisar_para_api.
+buffer_agtron = deque(maxlen=TAMANHO_JANELA_SUAVIZACAO)
 
-def main():
-    print("--- INICIANDO ANÁLISE EM LOTE DE IMAGENS ---")
+# analisar_distribuicao_torra foi removida: ela dependia de rotulos numericos
+# (ex: "25", "35"...) vindos do CLIP antigo, extraidos via regex, para agregar
+# a classificacao de varios graos individuais. No pipeline atual nao ha mais
+# graos segmentados -- cada chamada a analisar_para_api ja analisa a ROI
+# inteira e devolve (agtron, classe, desvio) de um unico frame. A agregacao
+# da rajada de 3 frames e feita diretamente em api_teste.py.
 
-    PASTA_IMAGENS_INPUT = "golden_test_set"
 
-    if not os.path.isdir(PASTA_IMAGENS_INPUT):
-        print(f"ERRO: Pasta de entrada '{PASTA_IMAGENS_INPUT}' não encontrada.")
-        print("Por favor, crie esta pasta e coloque suas imagens de teste dentro dela.")
-        return
+def resetar_suavizacao():
+    """Limpa o buffer da media movel. Chamada quando a ROI muda (rota /roi em
+    api_teste.py): sem isso, leituras feitas com a mira antiga continuariam
+    pesando na media por ate TAMANHO_JANELA_SUAVIZACAO chamadas depois do
+    ajuste."""
+    buffer_agtron.clear()
 
-    print("\nInicializando modelos...")
+
+def classificar_fase(valor_agtron):
+    """Mapeia o Agtron predito para o rotulo de fase da torra, usando as faixas
+    aproximadas dos dados reais coletados (Cru~95, Clara~75, Media~55, Escura~35)."""
+    if valor_agtron >= 85:
+        return "Cru"
+    elif valor_agtron >= 65:
+        return "Clara"
+    elif valor_agtron >= 45:
+        return "Media"
+    else:
+        return "Escura"
+
+
+def analisar_para_api(frame_ao_vivo):
+    global modelo_agtron, buffer_agtron
     try:
-        yolo_detector = YOLOObjectDetector()
-        cnn_classifier = CNNClassifierAPI()
+        if modelo_agtron is None:
+            return 0.0, "Erro IA", 0.0
+
+        if frame_ao_vivo is None:
+            return 0.0, "Sem grãos", 0.0
+
+        # Aplica a mira (ROI) atual de config.py -- lida via modulo (nao
+        # importada por nome) para que ajustes feitos em tempo real pelo
+        # frontend (rota /roi em api_teste.py, que atualiza config.X_INICIAL
+        # etc diretamente) tenham efeito imediato, sem reiniciar o servidor.
+        zona_do_cafe = frame_ao_vivo[config.Y_INICIAL:config.Y_FINAL, config.X_INICIAL:config.X_FINAL]
+        if zona_do_cafe is None or zona_do_cafe.size == 0:
+            return 0.0, "Sem grãos", 0.0
+
+        # Matematica da cor (espaco CIELAB), igual a analise_torra.py
+        lab_frame = cv2.cvtColor(zona_do_cafe, cv2.COLOR_BGR2LAB)
+        l_channel, a_channel, b_channel = cv2.split(lab_frame)
+
+        l_mean = float(np.mean(l_channel))
+        a_mean = float(np.mean(a_channel))
+        b_mean = float(np.mean(b_channel))
+
+        dados_entrada = np.array([[l_mean, a_mean, b_mean]])
+        agtron_bruto = float(modelo_agtron.predict(dados_entrada)[0])
+
+        # Suavizacao por media movel: mesmo com a ROI corrigida (config.py) e o
+        # modelo novo, ainda sobra ruido frame a frame -- um pico isolado bem
+        # visivel (queda a 52, salto a 124) num ponto especifico do video de
+        # teste (torra_v2.mp4), provavelmente desfoque de movimento do grao
+        # girando no tambor ou reflexo momentaneo naquele frame. Isso
+        # COMPLEMENTA a correcao da ROI e a futura trava de exposicao da
+        # camera via firmware (frente ainda pendente) -- nao substitui nenhuma
+        # das duas, so amortece o que ainda passa. Cada novo valor bruto entra
+        # no buffer persistente do modulo (buffer_agtron) e o Agtron devolvido
+        # e a media das ultimas TAMANHO_JANELA_SUAVIZACAO leituras, nao o
+        # valor isolado deste frame.
+        buffer_agtron.append(agtron_bruto)
+        agtron_predito = sum(buffer_agtron) / len(buffer_agtron)
+
+        # Debug: bruto vs suavizado a cada chamada, so no terminal (nunca vai
+        # pra resposta da API) -- para acompanhar a diferenca durante os
+        # testes com torra_v2.mp4.
+        print(f"[DEBUG SUAVIZACAO] bruto={agtron_bruto:.2f} | suavizado={agtron_predito:.2f} | janela={[round(v, 2) for v in buffer_agtron]}")
+
+        classe = classificar_fase(agtron_predito)
+
+        # Sem graos individuais para comparar entre si, o desvio padrao de L
+        # dentro da propria ROI serve de proxy para a uniformidade visual do lote
+        desvio = float(np.std(l_channel))
+
+        return round(agtron_predito, 2), classe, round(desvio, 2)
+
     except Exception as e:
-        print(f"ERRO: Falha ao carregar os modelos. Verifique seu config.py e .env.local. Detalhe: {e}")
-        return
-        
-    arquivos_a_processar = [f for f in os.listdir(PASTA_IMAGENS_INPUT) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-    
-    if not arquivos_a_processar:
-        print(f"ERRO: Nenhuma imagem encontrada em '{PASTA_IMAGENS_INPUT}'.")
-        return
-
-    start_time = time.time()
-
-    for idx, filename in enumerate(sorted(arquivos_a_processar), 1):
-        caminho_imagem = os.path.join(PASTA_IMAGENS_INPUT, filename)
-        print(f"\n---> Processando {idx}/{len(arquivos_a_processar)}: {filename}")
-
-        frame = cv2.imread(caminho_imagem)
-        if frame is None:
-            print("   ERRO: Falha ao ler a imagem.")
-            continue
-            
-        frame_com_detecoes, graos_recortados = yolo_detector.detectar_e_recortar(frame)
-        
-        classificacoes_cnn = []
-        print(f"   - {len(graos_recortados)} grãos detectados. Classificando via API...")
-        if graos_recortados:
-            for i, grao_crop in enumerate(graos_recortados, 1):
-                classificacao, confianca = cnn_classifier.classificar(grao_crop)
-                classificacoes_cnn.append(classificacao)
-                print(f"     - Grão {i}: Classe = {classificacao}, Confiança = {confianca:.2f}")
-
-        estatisticas = analisar_distribuicao_torra(classificacoes_cnn)
-        
-        print("\n   --- Análise da Amostra ---")
-        print(f"   -> Classe Dominante: {estatisticas['classe_dominante']}")
-        print(f"   -> Média Agtron da Amostra: {estatisticas['media_agtron']:.2f}")
-        print(f"   -> Uniformidade (Desvio Padrão): {estatisticas['desvio_padrao']:.2f}")
-
-    end_time = time.time()
-    
-    print(f"\n--- ANÁLISE EM LOTE CONCLUÍDA em {end_time - start_time:.2f} segundos ---")
-
-
-if __name__ == '__main__':
-    main()
+        print(f"[ERRO] Falha na analise da ROI/CIELAB: {e}")
+        return 0.0, "Erro Interno", 0.0

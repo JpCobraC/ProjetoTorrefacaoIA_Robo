@@ -1,0 +1,135 @@
+/*
+ * Paleta "TorrefacaoIA" — inspirada em rotulos de embalagem de cafe artesanal
+ * (do dourado do grao cru ao marrom quase preto da torra escura), no lugar
+ * do dark+ambar generico usado antes. Definida aqui como custom properties
+ * para ser referenciada nas classes Tailwind via bg-[var(--cor-x)] etc.
+ */
+:root {
+  --cor-fundo: #1B140F;
+  --cor-superficie: #2A2019;
+  --cor-superficie-clara: #362A1F;
+  --cor-cru: #C9A96E;
+  --cor-torrada: #8B5A2B;
+  --cor-escura: #3D2817;
+  --cor-texto: #F0E6D6;
+  --cor-texto-secundario: #A8977E;
+  --cor-alerta: #C1440E;
+  --cor-sucesso: #6B8E4E;
+
+  /* Dois tons intermediarios so para o gauge de MedidorTorra ter as 4 faixas
+     reais de torra (cru -> quase-preto) em vez do degrade continuo anterior.
+     --cor-gauge-clara interpola cru/torrada; --cor-gauge-escura-profunda vai
+     mais fundo que --cor-escura para fechar o arco num marrom quase preto de verdade. */
+  --cor-gauge-clara: #A67C45;
+  --cor-gauge-escura-profunda: #20120A;
+
+  /* Variantes translucidas das cores de acento, para badges/icones/pilulas.
+     O modificador de opacidade do Tailwind (bg-[var(--x)]/10) nao funciona
+     de forma confiavel sobre custom properties em hex, entao pre-calculamos
+     as versoes com alpha aqui mesmo. */
+  --cor-torrada-10: rgba(139, 90, 43, 0.14);
+  --cor-torrada-20: rgba(139, 90, 43, 0.28);
+  --cor-sucesso-10: rgba(107, 142, 78, 0.14);
+  --cor-sucesso-20: rgba(107, 142, 78, 0.3);
+  --cor-alerta-10: rgba(193, 68, 14, 0.14);
+  --cor-alerta-20: rgba(193, 68, 14, 0.32);
+}
+
+/* Textura sutil de "papel kraft" no fundo da pagina: ruido gerado via SVG
+   (feTurbulence) com a opacidade ja embutida no proprio filtro (feColorMatrix
+   reduz o alpha de saida para ~4.5%), em vez de baixar o opacity do elemento
+   -- assim o texto por cima nao e afetado. */
+.textura-fundo {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.045 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 180px 180px;
+}
+
+/* Sombra "cafe" (marrom escuro, nao preto puro) para os cards principais,
+   com leve elevacao extra no hover para dar sensacao de profundidade sem
+   parecer flutuando. */
+.card-torra {
+  box-shadow: 0 10px 28px -12px rgba(45, 26, 14, 0.5), 0 4px 10px -4px rgba(45, 26, 14, 0.35);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-torra:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px -12px rgba(45, 26, 14, 0.6), 0 6px 16px -6px rgba(45, 26, 14, 0.4);
+}
+
+/* Entrada orquestrada dos cards principais ao carregar a pagina: fade-in +
+   leve slide-up, com stagger aplicado via animation-delay inline em cada
+   card (ver App.jsx / CameraFeed.jsx / MedidorTorra.jsx / CurvaTorra.jsx). */
+@keyframes entrada-card {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.entrada-card {
+  animation: entrada-card 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entrada-card {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .card-torra {
+    transition: box-shadow 0.25s ease;
+  }
+
+  .card-torra:hover {
+    transform: none;
+  }
+}
+
+/* Halo pulsante sutil no ultimo ponto da Curva da Torra (CurvaTorra.jsx),
+   marcando a leitura mais recente como "ao vivo". Anima os atributos SVG
+   'r' e opacity diretamente -- suportado em todos os browsers modernos. */
+@keyframes pulso-ponto-vivo {
+  0% {
+    r: 8;
+    opacity: 0.35;
+  }
+  70%,
+  100% {
+    r: 15;
+    opacity: 0;
+  }
+}
+
+.ponto-curva-glow {
+  animation: pulso-ponto-vivo 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ponto-curva-glow {
+    animation: none;
+    opacity: 0.25;
+  }
+}
+
+/* Ponteiro do gauge semicircular de MedidorTorra.jsx: gira via CSS transform
+   (barato para o Raspberry Pi 3, sem filter/blur). A transicao so dispara
+   quando 'stage'/'score' realmente mudam no estado de App.jsx -- que ja tem
+   uma tolerancia (tolerancia_agtron) para nao atualizar a cada leitura --
+   entao o ponteiro nunca precisa reanimar mais que a cada poucos segundos. */
+.ponteiro-medidor {
+  transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ponteiro-medidor {
+    transition: none;
+  }
+}
